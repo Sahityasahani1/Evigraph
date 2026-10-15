@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Data directories (raw datasets are large)
+data/raw/
+data/processed/
+*.pcap
+*.pcapng
+*.parquet
+*.csv
+
+# Exceptions: keep sample fixtures
+!data/samples/
+!data/samples/*.csv
+
+# Model checkpoints and weights
+models/*.pt
+models/*.onnx
+models/*.bin
+models/*.joblib
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints
+
+# Logs and outputs
+*.log
+outputs/*.json
+!outputs/.gitkeep
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
