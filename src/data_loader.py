@@ -128,6 +128,11 @@ class FlowDataLoader:
         
         # Deduplicate
         df = df.drop_duplicates()
+
+        # Memory optimization: downcast float64 to float32
+        float_cols = df.select_dtypes(include=["float64"]).columns
+        if len(float_cols) > 0:
+            df[float_cols] = df[float_cols].astype("float32")
         
         print(f"[DataLoader] Cleaned dataset: {initial_len} -> {len(df)} rows ({initial_len - len(df)} dropped)")
         return df
@@ -135,7 +140,7 @@ class FlowDataLoader:
     def prepare_temporal_split(
         self, 
         df: pd.DataFrame, 
-        train_ratio: float = 0.50,
+        train_ratio: float = 0.60,
         val_ratio: float = 0.20,
         per_class: bool = True
     ):
@@ -236,16 +241,56 @@ class FlowDataLoader:
     def load_from_csv(self, file_path: Path) -> pd.DataFrame:
         return self.load_dataset(file_path)
 
+    def load_processed_splits(
+        self,
+        split_prefix: str = "benchmark"
+    ):
+        """
+        Loads pre-saved processed splits directly from `data/processed/`.
+        Returns: (X_train, y_train, meta_train, X_val, y_val, meta_val, X_test, y_test, meta_test)
+        """
+        from src.config import PROCESSED_DATA_DIR
+        train_path = PROCESSED_DATA_DIR / f"{split_prefix}_train_flows.parquet"
+        val_path = PROCESSED_DATA_DIR / f"{split_prefix}_val_flows.parquet"
+        test_path = PROCESSED_DATA_DIR / f"{split_prefix}_test_flows.parquet"
+
+        if not (train_path.exists() and val_path.exists() and test_path.exists()):
+            raise FileNotFoundError(f"Processed splits not found in {PROCESSED_DATA_DIR}. Run 'python -m src.export_training_data' first.")
+
+        train_df = pd.read_parquet(train_path)
+        val_df = pd.read_parquet(val_path)
+        test_df = pd.read_parquet(test_path)
+
+        self.feature_columns = [
+            c for c in train_df.columns 
+            if c not in self.metadata_cols and pd.api.types.is_numeric_dtype(train_df[c])
+        ]
+
+        X_train = train_df[self.feature_columns]
+        y_train = train_df["label"]
+        meta_train = train_df[[c for c in self.metadata_cols if c in train_df.columns]]
+
+        X_val = val_df[self.feature_columns]
+        y_val = val_df["label"]
+        meta_val = val_df[[c for c in self.metadata_cols if c in val_df.columns]]
+
+        X_test = test_df[self.feature_columns]
+        y_test = test_df["label"]
+        meta_test = test_df[[c for c in self.metadata_cols if c in test_df.columns]]
+
+        print(f"[DataLoader] Loaded Pre-saved Splits: Train={len(X_train):,}, Val={len(X_val):,}, Test={len(X_test):,}")
+        return X_train, y_train, meta_train, X_val, y_val, meta_val, X_test, y_test, meta_test
+
     def load_combined_dataset(
         self, 
         file_paths: Optional[List[Path]] = None, 
-        max_per_attack: int = 15000,
-        benign_per_file: int = 20000
+        max_per_attack: Optional[int] = None,
+        benign_per_file: Optional[int] = None
     ) -> pd.DataFrame:
         """
         Loads and combines all attack captures into a unified multi-class enterprise dataset.
         Includes CICIDS2017 parquet captures and USP datasets (e.g. NIDS2025 RCE CSV).
-        Ensures all attack classes are fairly represented.
+        When max_per_attack and benign_per_file are None, loads the full 2.64M+ dataset.
         """
         from src.config import RAW_DATA_DIR
         if file_paths is None:
@@ -256,14 +301,17 @@ class FlowDataLoader:
             print(f"[DataLoader] Ingesting attack slice from: {f.name}")
             df_full = self.load_dataset(f)
             
-            # Separate Benign and Attacks to ensure attack representation
-            benign_df = df_full[df_full["label"] == "BENIGN"].head(benign_per_file)
+            # Separate Benign and Attacks
+            if benign_per_file is not None:
+                benign_df = df_full[df_full["label"] == "BENIGN"].head(benign_per_file)
+            else:
+                benign_df = df_full[df_full["label"] == "BENIGN"]
             
-            # Group attacks by class and cap each class individually to prevent single-class skew
+            # Group attacks by class and cap each class individually if specified
             attack_slices = []
             for atk_cls in df_full[df_full["label"] != "BENIGN"]["label"].unique():
                 cls_df = df_full[df_full["label"] == atk_cls]
-                if len(cls_df) > max_per_attack:
+                if max_per_attack is not None and len(cls_df) > max_per_attack:
                     cls_df = cls_df.head(max_per_attack)
                 attack_slices.append(cls_df)
                 
@@ -277,6 +325,11 @@ class FlowDataLoader:
         combined_df = pd.concat(dfs, ignore_index=True)
         # Fill missing columns across heterogeneous datasets with 0.0
         combined_df = combined_df.fillna(0.0)
+
+        # Downcast float64 to float32 to reduce memory footprint by 50%
+        float_cols = combined_df.select_dtypes(include=["float64"]).columns
+        if len(float_cols) > 0:
+            combined_df[float_cols] = combined_df[float_cols].astype("float32")
 
         if "timestamp" in combined_df.columns:
             combined_df["timestamp"] = pd.to_datetime(combined_df["timestamp"], format="mixed", errors="coerce")

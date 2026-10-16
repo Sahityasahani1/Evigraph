@@ -1,0 +1,264 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-10-16T18:04:01.580928Z",
+  "total_files": 17,
+  "files": [
+    {
+      "category": "processed",
+      "filename": "benchmark_full_340k.parquet",
+      "rel_path": "processed\\benchmark_full_340k.parquet",
+      "size_mb": 40.6,
+      "total_flows": 340000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN",
+        "Reconnaissance",
+        "Fuzzers",
+        "Backdoor",
+        "Exploits",
+        "DNS-Amplification",
+        "NTP-Reflection",
+        "SYN-Flood",
+        "C2-Heartbeat",
+        "Lateral-SMB-Relay",
+        "HTTPS-Exfiltration"
+      ],
+      "sha256": "ee7b3c034f28fabbe0c8c3439a8d101d325068d42c0524cfa7ec001ba47cbf7a",
+      "last_modified": "2026-10-16T23:33:58.506430"
+    },
+    {
+      "category": "processed",
+      "filename": "benchmark_test_flows.parquet",
+      "rel_path": "processed\\benchmark_test_flows.parquet",
+      "size_mb": 8.114,
+      "total_flows": 68000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN",
+        "Backdoor",
+        "C2-Heartbeat",
+        "DNS-Amplification",
+        "Exploits",
+        "Fuzzers",
+        "HTTPS-Exfiltration",
+        "Lateral-SMB-Relay",
+        "NTP-Reflection",
+        "Reconnaissance",
+        "SYN-Flood"
+      ],
+      "sha256": "75b9556969f58339f9b6638f5718c903a5fe6ba586c2eebf34f40ba1a8f78304",
+      "last_modified": "2026-10-16T23:33:59.673561"
+    },
+    {
+      "category": "processed",
+      "filename": "benchmark_test_sample_1000.csv",
+      "rel_path": "processed\\benchmark_test_sample_1000.csv",
+      "size_mb": 0.328,
+      "total_flows": 1000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN"
+      ],
+      "sha256": "dbfc322bc2ba216071547573bec41af28a7c0c0e266ba01e830f6ad7dc33d13a",
+      "last_modified": "2026-10-16T23:33:59.728997"
+    },
+    {
+      "category": "processed",
+      "filename": "benchmark_train_flows.parquet",
+      "rel_path": "processed\\benchmark_train_flows.parquet",
+      "size_mb": 24.489,
+      "total_flows": 204000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN",
+        "Backdoor",
+        "C2-Heartbeat",
+        "DNS-Amplification",
+        "Exploits",
+        "Fuzzers",
+        "HTTPS-Exfiltration",
+        "Lateral-SMB-Relay",
+        "NTP-Reflection",
+        "Reconnaissance",
+        "SYN-Flood"
+      ],
+      "sha256": "a6a6bc329d0dc091da7d85f93d806150e440e955d72532d368e2597ab64c7aeb",
+      "last_modified": "2026-10-16T23:33:59.261435"
+    },
+    {
+      "category": "processed",
+      "filename": "benchmark_train_sample_1000.csv",
+      "rel_path": "processed\\benchmark_train_sample_1000.csv",
+      "size_mb": 0.331,
+      "total_flows": 1000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN"
+      ],
+      "sha256": "20899d86b4126a44d0b2f3d2ced415878951629c66f672d71fb6b27956cce0af",
+      "last_modified": "2026-10-16T23:33:59.703808"
+    },
+    {
+      "category": "processed",
+      "filename": "benchmark_val_flows.parquet",
+      "rel_path": "processed\\benchmark_val_flows.parquet",
+      "size_mb": 8.155,
+      "total_flows": 68000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN",
+        "Backdoor",
+        "C2-Heartbeat",
+        "DNS-Amplification",
+        "Exploits",
+        "Fuzzers",
+        "HTTPS-Exfiltration",
+        "Lateral-SMB-Relay",
+        "NTP-Reflection",
+        "Reconnaissance",
+        "SYN-Flood"
+      ],
+      "sha256": "4cef38f396ac3f6fe53a81e4fb46cdde5522b93d55994d29116fbcfd63e71413",
+      "last_modified": "2026-10-16T23:33:59.470866"
+    },
+    {
+      "category": "new_benchmark",
+      "filename": "APT-C2-Exfiltration.parquet",
+      "rel_path": "new_benchmark\\APT-C2-Exfiltration.parquet",
+      "size_mb": 12.9,
+      "total_flows": 100000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN",
+        "C2-Heartbeat",
+        "Lateral-SMB-Relay",
+        "HTTPS-Exfiltration"
+      ],
+      "sha256": "f7972b5f6188d2f4f8ab2ff50ef876aaa2289beb27c1365e73eb86b2a5e58c6f",
+      "last_modified": "2026-10-16T23:24:27.537027"
+    },
+    {
+      "category": "new_benchmark",
+      "filename": "CIC-DDoS2019-Reflection.parquet",
+      "rel_path": "new_benchmark\\CIC-DDoS2019-Reflection.parquet",
+      "size_mb": 14.104,
+      "total_flows": 120000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN",
+        "DNS-Amplification",
+        "NTP-Reflection",
+        "SYN-Flood"
+      ],
+      "sha256": "624b59caa31251e21fbf6fba65ad60462255f448cb6b300737c9c1fbf908a0f7",
+      "last_modified": "2026-10-16T23:24:26.963532"
+    },
+    {
+      "category": "new_benchmark",
+      "filename": "UNSW-NB15-Enterprise.parquet",
+      "rel_path": "new_benchmark\\UNSW-NB15-Enterprise.parquet",
+      "size_mb": 15.231,
+      "total_flows": 120000,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN",
+        "Reconnaissance",
+        "Fuzzers",
+        "Backdoor",
+        "Exploits"
+      ],
+      "sha256": "eb1468d1fa70d0181a6f6611d99ef9b633b35a6c51593b6ed9256640b0d15ced",
+      "last_modified": "2026-10-16T23:24:26.135831"
+    },
+    {
+      "category": "raw",
+      "filename": "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv.parquet",
+      "rel_path": "raw\\Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv.parquet",
+      "size_mb": 21.98,
+      "total_flows": 225745,
+      "feature_columns": 85,
+      "classes": [],
+      "sha256": "7c5876d52189fc01af54bad6cf23afe9f7fbc0e3ca6c3595920754f0c3ba8f66",
+      "last_modified": "2026-10-15T23:32:31.555031"
+    },
+    {
+      "category": "raw",
+      "filename": "Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv.parquet",
+      "rel_path": "raw\\Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv.parquet",
+      "size_mb": 17.769,
+      "total_flows": 286467,
+      "feature_columns": 85,
+      "classes": [],
+      "sha256": "4d78cee297c27f1a9947b9384793e587a46c7a3ea89db199553dabddc9835d4a",
+      "last_modified": "2026-10-15T23:09:18.069572"
+    },
+    {
+      "category": "raw",
+      "filename": "Monday-WorkingHours.pcap_ISCX.csv.parquet",
+      "rel_path": "raw\\Monday-WorkingHours.pcap_ISCX.csv.parquet",
+      "size_mb": 62.433,
+      "total_flows": 529918,
+      "feature_columns": 85,
+      "classes": [],
+      "sha256": "dfdcef4b8670e52af54dc4f82174834365a393473e877174cca46d17b12dfd02",
+      "last_modified": "2026-10-15T23:33:39.326714"
+    },
+    {
+      "category": "raw",
+      "filename": "NIDS2025-RemoteCE-Infiltration.csv",
+      "rel_path": "raw\\NIDS2025-RemoteCE-Infiltration.csv",
+      "size_mb": 0.963,
+      "total_flows": 2125,
+      "feature_columns": 1,
+      "classes": [],
+      "sha256": "fa494b6f310c4c6c700bdf1c3b6f5134af4cc70a16fd7bc51d0f496cbd2ec7f7",
+      "last_modified": "2026-10-16T00:01:53.479568"
+    },
+    {
+      "category": "raw",
+      "filename": "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv.parquet",
+      "rel_path": "raw\\Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv.parquet",
+      "size_mb": 18.763,
+      "total_flows": 458968,
+      "feature_columns": 85,
+      "classes": [],
+      "sha256": "d8110c04a7af91124ada1c5ad901c4210879df1af8882dc637767532e7165350",
+      "last_modified": "2026-10-15T23:33:22.213314"
+    },
+    {
+      "category": "raw",
+      "filename": "Tuesday-WorkingHours.pcap_ISCX.csv.parquet",
+      "rel_path": "raw\\Tuesday-WorkingHours.pcap_ISCX.csv.parquet",
+      "size_mb": 50.26,
+      "total_flows": 445909,
+      "feature_columns": 85,
+      "classes": [],
+      "sha256": "27e83d518cb093faefd0f883cb4df3ad8b353f150934004f28d0e7962f9f31c4",
+      "last_modified": "2026-10-15T23:14:05.284063"
+    },
+    {
+      "category": "raw",
+      "filename": "Wednesday-workingHours.pcap_ISCX.csv.parquet",
+      "rel_path": "raw\\Wednesday-workingHours.pcap_ISCX.csv.parquet",
+      "size_mb": 72.968,
+      "total_flows": 692703,
+      "feature_columns": 85,
+      "classes": [],
+      "sha256": "d23a259820b16e1ad54f9f3b58d5727c5032d383015f90bc7c07cebbdf8a7140",
+      "last_modified": "2026-10-15T23:33:12.520019"
+    },
+    {
+      "category": "samples",
+      "filename": "sample_cicids2017_flows.csv",
+      "rel_path": "samples\\sample_cicids2017_flows.csv",
+      "size_mb": 0.777,
+      "total_flows": 1710,
+      "feature_columns": 44,
+      "classes": [
+        "BENIGN"
+      ],
+      "sha256": "d4fb78b398e8d307ff1ca7c0e1baef0158b0d31c9ca80ea99044b698505957fc",
+      "last_modified": "2026-10-15T22:54:06.223930"
+    }
+  ]
+}

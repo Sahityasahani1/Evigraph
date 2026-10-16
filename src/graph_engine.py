@@ -24,51 +24,77 @@ class HostGraphEngine:
         """
         self.graph.clear()
         
-        # 1. Add edges (each flow is a directed edge src_ip -> dst_ip)
-        for _, row in flows_df.iterrows():
-            src = str(row["src_ip"])
-            dst = str(row["dst_ip"])
-            
-            # Edge attributes
-            edge_attrs = {
-                "flow_id": row.get("flow_id", ""),
-                "timestamp": str(row.get("timestamp", "")),
-                "src_port": int(row.get("src_port", 0)),
-                "dst_port": int(row.get("dst_port", 0)),
-                "protocol": int(row.get("protocol", 6)),
-                "risk_score": float(row.get("risk_score", 0.0)),
-                "predicted_class": str(row.get("predicted_class", "BENIGN")),
-                "is_alert": bool(row.get("is_alert", False)),
-                "tot_fwd_bytes": float(row.get("tot_len_fwd_pkts", 0.0)),
-                "tot_bwd_bytes": float(row.get("tot_len_bwd_pkts", 0.0))
-            }
-            
-            self.graph.add_edge(src, dst, key=edge_attrs["flow_id"], **edge_attrs)
+        # 1. Vectorized bulk edge addition (TRD NFR-3 / NFR-5)
+        src_ips = flows_df["src_ip"].astype(str).values
+        dst_ips = flows_df["dst_ip"].astype(str).values
+        flow_ids = flows_df["flow_id"].astype(str).values if "flow_id" in flows_df.columns else [f"flw_{i}" for i in range(len(flows_df))]
+        timestamps = flows_df["timestamp"].astype(str).values if "timestamp" in flows_df.columns else [""] * len(flows_df)
+        src_ports = flows_df["src_port"].fillna(0).astype(int).values if "src_port" in flows_df.columns else np.zeros(len(flows_df), dtype=int)
+        dst_ports = flows_df["dst_port"].fillna(0).astype(int).values if "dst_port" in flows_df.columns else np.zeros(len(flows_df), dtype=int)
+        protocols = flows_df["protocol"].fillna(6).astype(int).values if "protocol" in flows_df.columns else np.full(len(flows_df), 6, dtype=int)
+        risk_scores = flows_df["risk_score"].fillna(0.0).astype(float).values if "risk_score" in flows_df.columns else np.zeros(len(flows_df), dtype=float)
+        pred_classes = flows_df["predicted_class"].astype(str).values if "predicted_class" in flows_df.columns else np.full(len(flows_df), "BENIGN")
+        is_alerts = flows_df["is_alert"].astype(bool).values if "is_alert" in flows_df.columns else np.zeros(len(flows_df), dtype=bool)
+        fwd_col = "tot_len_fwd_pkts" if "tot_len_fwd_pkts" in flows_df.columns else ("totlen_fwd_pkts" if "totlen_fwd_pkts" in flows_df.columns else None)
+        bwd_col = "tot_len_bwd_pkts" if "tot_len_bwd_pkts" in flows_df.columns else ("totlen_bwd_pkts" if "totlen_bwd_pkts" in flows_df.columns else None)
+        fwd_bytes = flows_df[fwd_col].fillna(0.0).astype(float).values if fwd_col else np.zeros(len(flows_df), dtype=float)
+        bwd_bytes = flows_df[bwd_col].fillna(0.0).astype(float).values if bwd_col else np.zeros(len(flows_df), dtype=float)
+        shap_exps = flows_df["shap_explanation"].tolist() if "shap_explanation" in flows_df.columns else [[] for _ in range(len(flows_df))]
 
-        # 2. Compute Host (Node) Behavioral Features (TRD Sec 3.2 & 3.3.3)
+        edge_list = [
+            (
+                s, d, fid,
+                {
+                    "flow_id": fid,
+                    "timestamp": ts,
+                    "src_port": sp,
+                    "dst_port": dp,
+                    "protocol": proto,
+                    "risk_score": r,
+                    "predicted_class": pc,
+                    "is_alert": al,
+                    "tot_fwd_bytes": fb,
+                    "tot_bwd_bytes": bb,
+                    "shap_explanation": se
+                }
+            )
+            for s, d, fid, ts, sp, dp, proto, r, pc, al, fb, bb, se in zip(
+                src_ips, dst_ips, flow_ids, timestamps, src_ports, dst_ports,
+                protocols, risk_scores, pred_classes, is_alerts, fwd_bytes, bwd_bytes, shap_exps
+            )
+        ]
+        self.graph.add_edges_from(edge_list)
+
+        # 2. Vectorized Host (Node) Behavioral Metrics via pandas groupby (0.1s instead of O(N) loop)
+        out_agg = flows_df.groupby("src_ip").agg(
+            out_degree=("dst_ip", "count"),
+            fan_out=("dst_ip", "nunique"),
+            unique_dst_ports=("dst_port", "nunique") if "dst_port" in flows_df.columns else ("dst_ip", "nunique"),
+            bytes_out=(fwd_col, "sum") if fwd_col else ("dst_ip", "count"),
+            alerts_sent=("is_alert", "sum") if "is_alert" in flows_df.columns else ("dst_ip", "count")
+        )
+        in_agg = flows_df.groupby("dst_ip").agg(
+            in_degree=("src_ip", "count"),
+            fan_in=("src_ip", "nunique"),
+            bytes_in=(bwd_col, "sum") if bwd_col else ("src_ip", "count"),
+            alerts_received=("is_alert", "sum") if "is_alert" in flows_df.columns else ("src_ip", "count")
+        )
+
+        out_dict = out_agg.to_dict(orient="index")
+        in_dict = in_agg.to_dict(orient="index")
+
         for node in self.graph.nodes():
-            out_edges = self.graph.out_edges(node, data=True)
-            in_edges = self.graph.in_edges(node, data=True)
-            
-            unique_destinations = len(set(v for _, v, _ in out_edges))
-            unique_sources = len(set(u for u, _, _ in in_edges))
-            unique_dst_ports = len(set(d.get("dst_port", 0) for _, _, d in out_edges))
-            
-            bytes_out = sum(d.get("tot_fwd_bytes", 0) for _, _, d in out_edges)
-            bytes_in = sum(d.get("tot_bwd_bytes", 0) for _, _, d in in_edges)
-            
-            alerts_out = sum(1 for _, _, d in out_edges if d.get("is_alert", False))
-            alerts_in = sum(1 for _, _, d in in_edges if d.get("is_alert", False))
-            
-            self.graph.nodes[node]["in_degree"] = self.graph.in_degree(node)
-            self.graph.nodes[node]["out_degree"] = self.graph.out_degree(node)
-            self.graph.nodes[node]["fan_out"] = unique_destinations
-            self.graph.nodes[node]["fan_in"] = unique_sources
-            self.graph.nodes[node]["port_diversity"] = unique_dst_ports
-            self.graph.nodes[node]["bytes_out"] = bytes_out
-            self.graph.nodes[node]["bytes_in"] = bytes_in
-            self.graph.nodes[node]["alerts_sent"] = alerts_out
-            self.graph.nodes[node]["alerts_received"] = alerts_in
+            o = out_dict.get(node, {})
+            i = in_dict.get(node, {})
+            self.graph.nodes[node]["in_degree"] = int(i.get("in_degree", 0))
+            self.graph.nodes[node]["out_degree"] = int(o.get("out_degree", 0))
+            self.graph.nodes[node]["fan_out"] = int(o.get("fan_out", 0))
+            self.graph.nodes[node]["fan_in"] = int(i.get("fan_in", 0))
+            self.graph.nodes[node]["port_diversity"] = int(o.get("unique_dst_ports", 0))
+            self.graph.nodes[node]["bytes_out"] = float(o.get("bytes_out", 0.0))
+            self.graph.nodes[node]["bytes_in"] = float(i.get("bytes_in", 0.0))
+            self.graph.nodes[node]["alerts_sent"] = int(o.get("alerts_sent", 0))
+            self.graph.nodes[node]["alerts_received"] = int(i.get("alerts_received", 0))
 
         print(f"[GraphEngine] Built host graph: {self.graph.number_of_nodes()} nodes (hosts), {self.graph.number_of_edges()} edges (flows)")
         return self.graph
@@ -82,12 +108,13 @@ class HostGraphEngine:
         Extracts the k-hop induced neighborhood around hosts participating in alert flows.
         Returns serialized Cytoscape-compatible JSON structure.
         """
-        # Find all hosts involved in alerts
+        # Find all hosts involved in alerts with O(1) set lookup
+        alert_ids_set = set(alert_flow_ids)
         alert_hosts = set()
         alert_edges = []
         
         for u, v, k, data in self.graph.edges(keys=True, data=True):
-            if data.get("flow_id") in alert_flow_ids or data.get("is_alert", False):
+            if data.get("flow_id") in alert_ids_set or data.get("is_alert", False):
                 alert_hosts.add(u)
                 alert_hosts.add(v)
                 alert_edges.append((u, v, k, data))
@@ -114,29 +141,45 @@ class HostGraphEngine:
             nodes_payload.append({
                 "id": str(n),
                 "role": role,
-                "in_degree": d.get("in_degree", 0),
-                "out_degree": d.get("out_degree", 0),
-                "fan_out": d.get("fan_out", 0),
-                "alerts_sent": d.get("alerts_sent", 0),
-                "alerts_received": d.get("alerts_received", 0)
+                "in_degree": int(d.get("in_degree", 0)),
+                "out_degree": int(d.get("out_degree", 0)),
+                "fan_out": int(d.get("fan_out", 0)),
+                "alerts_sent": int(d.get("alerts_sent", 0)),
+                "alerts_received": int(d.get("alerts_received", 0))
             })
             
-        # Serialize edges (bounded by max_edges for UI/Agent performance, TRD NFR-4)
-        edges_payload = []
+        # Serialize edges: PRIORITIZE alert evidence edges first (TRD NFR-4 & AGENTS.md contract)
+        alert_edges_payload = []
+        context_edges_payload = []
+        max_alert_edges = 300
+        max_context_edges = 100
+        
         for u, v, k, d in subgraph.edges(keys=True, data=True):
-            if len(edges_payload) >= 300:
-                break
-            edges_payload.append({
-                "edge_id": d.get("flow_id", str(k)),
+            fid = str(d.get("flow_id", str(k)))
+            is_incident_alert = (fid in alert_ids_set) or bool(d.get("is_alert", False))
+            
+            edge_dict = {
+                "edge_id": fid,
                 "source": str(u),
                 "target": str(v),
-                "timestamp": d.get("timestamp"),
-                "dst_port": d.get("dst_port"),
-                "protocol": d.get("protocol"),
-                "risk_score": d.get("risk_score", 0.0),
-                "predicted_class": d.get("predicted_class", "BENIGN"),
-                "is_alert": d.get("is_alert", False)
-            })
+                "timestamp": str(d.get("timestamp", "")),
+                "dst_port": int(d.get("dst_port", 0)),
+                "protocol": int(d.get("protocol", 6)),
+                "risk_score": float(d.get("risk_score", 0.0)),
+                "predicted_class": str(d.get("predicted_class", "BENIGN")),
+                "is_alert": is_incident_alert
+            }
+            if d.get("shap_explanation"):
+                edge_dict["shap_explanation"] = d.get("shap_explanation")
+                
+            if is_incident_alert:
+                if len(alert_edges_payload) < max_alert_edges:
+                    alert_edges_payload.append(edge_dict)
+            else:
+                if len(context_edges_payload) < max_context_edges:
+                    context_edges_payload.append(edge_dict)
+
+        edges_payload = alert_edges_payload + context_edges_payload
 
         return {
             "node_count": len(nodes_payload),

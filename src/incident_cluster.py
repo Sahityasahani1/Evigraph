@@ -35,26 +35,39 @@ class IncidentClusterEngine:
         alerts_df["timestamp"] = pd.to_datetime(alerts_df["timestamp"], format="mixed")
         alerts_df = alerts_df.sort_values(by="timestamp").reset_index(drop=True)
 
-        # 1. Add Alert Nodes
-        for _, row in alerts_df.iterrows():
-            self.alert_graph.add_node(
-                str(row["flow_id"]),
-                src_ip=str(row["src_ip"]),
-                dst_ip=str(row["dst_ip"]),
-                timestamp=row["timestamp"],
-                risk_score=float(row["risk_score"]),
-                predicted_class=str(row["predicted_class"]),
-                evidence_id=str(row.get("evidence_id", "raw_pcap"))
+        # 1. Vectorized Add Alert Nodes
+        flow_ids_str = alerts_df["flow_id"].astype(str).values
+        src_ips_str = alerts_df["src_ip"].astype(str).values
+        dst_ips_str = alerts_df["dst_ip"].astype(str).values
+        ts_values = alerts_df["timestamp"].values
+        risk_values = alerts_df["risk_score"].astype(float).values
+        classes_str = alerts_df["predicted_class"].astype(str).values
+        ev_ids_str = alerts_df.get("evidence_id", pd.Series("raw_pcap", index=alerts_df.index)).astype(str).values
+
+        node_tuples = [
+            (
+                fid,
+                {
+                    "src_ip": s,
+                    "dst_ip": d,
+                    "timestamp": ts,
+                    "risk_score": r,
+                    "predicted_class": pc,
+                    "evidence_id": ev
+                }
             )
+            for fid, s, d, ts, r, pc, ev in zip(
+                flow_ids_str, src_ips_str, dst_ips_str, ts_values, risk_values, classes_str, ev_ids_str
+            )
+        ]
+        self.alert_graph.add_nodes_from(node_tuples)
 
         # 2. Add Correlation Edges using Inverted Host Index (TRD NFR-3 / NFR-5: High-throughput Big Data scaling)
         from collections import defaultdict
         host_to_alerts = defaultdict(list)
-        for _, row in alerts_df.iterrows():
-            f_id = str(row["flow_id"])
-            ts = row["timestamp"]
-            host_to_alerts[str(row["src_ip"])].append((f_id, ts))
-            host_to_alerts[str(row["dst_ip"])].append((f_id, ts))
+        for fid, ts, s, d in zip(flow_ids_str, alerts_df["timestamp"], src_ips_str, dst_ips_str):
+            host_to_alerts[s].append((fid, ts))
+            host_to_alerts[d].append((fid, ts))
 
         for host, host_alerts in host_to_alerts.items():
             host_alerts.sort(key=lambda x: x[1])
@@ -70,15 +83,21 @@ class IncidentClusterEngine:
                         weight = 1.0 / (1.0 + time_delta / 60.0)
                         self.alert_graph.add_edge(f1, f2, weight=weight)
 
-        # 3. Cluster Connected Components into Incident Candidates
+        # 3. Cluster Connected Components into Incident Candidates (O(N) single-pass grouping)
         incidents = []
         components = list(nx.connected_components(self.alert_graph))
         num_alerts = len(alerts_df)
         print(f"[IncidentEngine] Correlated {num_alerts} alerts into {len(components)} incident clusters")
 
-        for inc_idx, comp_nodes in enumerate(components):
-            flow_ids = list(comp_nodes)
-            sub_alerts = alerts_df[alerts_df["flow_id"].isin(flow_ids)]
+        # Map each flow_id to its component index for O(1) vectorized extraction
+        flow_to_comp = {}
+        for c_idx, comp_nodes in enumerate(components):
+            for fid in comp_nodes:
+                flow_to_comp[fid] = c_idx
+        alerts_df["component_id"] = alerts_df["flow_id"].map(flow_to_comp)
+
+        for inc_idx, (c_id, sub_alerts) in enumerate(alerts_df.groupby("component_id")):
+            flow_ids = list(sub_alerts["flow_id"])
             
             src_hosts = set(sub_alerts["src_ip"])
             dst_hosts = set(sub_alerts["dst_ip"])
@@ -155,8 +174,21 @@ class IncidentClusterEngine:
             "incidents": enriched_incidents
         }
 
+        def default_serializer(obj):
+            if isinstance(obj, (np.integer,)):
+                return int(obj)
+            if isinstance(obj, (np.floating,)):
+                return float(obj)
+            if isinstance(obj, (np.bool_,)):
+                return bool(obj)
+            if isinstance(obj, (np.ndarray,)):
+                return obj.tolist()
+            if hasattr(obj, "isoformat"):
+                return obj.isoformat()
+            return str(obj)
+
         with open(output_file, "w") as f:
-            json.dump(case_package, f, indent=2)
+            json.dump(case_package, f, indent=2, default=default_serializer)
 
         print(f"[IncidentEngine] Successfully exported Agent case package to {output_file}")
         return output_file

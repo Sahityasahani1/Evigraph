@@ -57,8 +57,8 @@ class BaselineDetector:
         non_constant_cols = variances[variances > 1e-8].index.tolist()
         self.feature_columns = non_constant_cols
         
-        X_tr = X_train[self.feature_columns].replace([np.inf, -np.inf], np.nan).fillna(0)
-        X_v = X_val[self.feature_columns].replace([np.inf, -np.inf], np.nan).fillna(0)
+        X_tr = X_train[self.feature_columns].replace([np.inf, -np.inf], np.nan).fillna(0).astype(np.float32)
+        X_v = X_val[self.feature_columns].replace([np.inf, -np.inf], np.nan).fillna(0).astype(np.float32)
 
         # 2. Exclude ultra-rare classes with < 5 samples in training
         counts_series = y_train.value_counts()
@@ -207,7 +207,7 @@ class BaselineDetector:
             raise ValueError("Model has not been trained or loaded yet.")
             
         th = threshold or self.optimal_threshold
-        X_clean = X[self.feature_columns].replace([np.inf, -np.inf], np.nan).fillna(0)
+        X_clean = X[self.feature_columns].replace([np.inf, -np.inf], np.nan).fillna(0).astype(np.float32)
         
         probs = self.base_model.predict_proba(X_clean)
         pred_idx = np.argmax(probs, axis=1)
@@ -232,7 +232,7 @@ class BaselineDetector:
         scored_df["is_alert"] = scored_df["risk_score"] >= th
         
         scored_df["class_probabilities"] = [
-            {self.classes_[i]: round(float(p), 4) for i, p in enumerate(row_probs)}
+            {self.classes_[i]: round(float(p), 4) for i, p in enumerate(row_probs) if i < len(self.classes_)}
             for row_probs in probs
         ]
         

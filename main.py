@@ -21,6 +21,9 @@ from src.config import SAMPLES_DATA_DIR, OUTPUTS_DIR
 from src.data_loader import FlowDataLoader
 from src.baseline_detector import BaselineDetector
 from src.gnn_detector import GNNDetector
+from src.detectors.autoencoder_detector import AutoencoderDetector
+from src.detectors.hist_gb_detector import HistGBDetector
+from src.detectors.ensemble_fuser import EnsembleFuser
 from src.graph_engine import HostGraphEngine
 from src.incident_cluster import IncidentClusterEngine
 
@@ -41,11 +44,29 @@ def run_pipeline(
         raw_df = loader.load_dataset(data_path, max_rows=max_rows)
         
     X_train, y_train, meta_train, X_val, y_val, meta_val, X_test, y_test, meta_test = loader.prepare_temporal_split(
-        raw_df, train_ratio=0.50, val_ratio=0.20
+        raw_df, train_ratio=0.60, val_ratio=0.20
     )
     
-    # 2. Train Detector (XGBoost or PyG Edge-GraphSAGE)
-    if model_type == "gnn":
+    # 2. Train Detector (Ensemble, XGBoost, Autoencoder, HistGB, or GNN)
+    if model_type == "ensemble":
+        print("\n--- Training Tri-Pillar Multi-Model Defense-in-Depth Ensemble ---")
+        detector = EnsembleFuser(model_name="ensemble_fuser")
+        detector.train(X_train, y_train, X_val, y_val)
+        detector.save()
+        scored_test_df = detector.score_flows(X_test, meta_test)
+    elif model_type == "autoencoder":
+        print("\n--- Training Unsupervised PyTorch Autoencoder Zero-Day Detector ---")
+        detector = AutoencoderDetector(model_name="autoencoder_detector")
+        detector.train(X_train, y_train, X_val, y_val, epochs=15)
+        detector.save()
+        scored_test_df = detector.score_flows(X_test, meta_test)
+    elif model_type == "histgb":
+        print("\n--- Training Scikit-Learn Native HistGradientBoosting Detector ---")
+        detector = HistGBDetector(model_name="hist_gb_detector")
+        detector.train(X_train, y_train, X_val, y_val)
+        detector.save()
+        scored_test_df = detector.score_flows(X_test, meta_test)
+    elif model_type == "gnn":
         print("\n--- Training PyTorch Geometric Edge-GraphSAGE Detector ---")
         detector = GNNDetector(model_name="gnn_edge_sage")
         detector.train(X_train, y_train, meta_train, X_val, y_val, meta_val, epochs=25)
@@ -110,14 +131,36 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="EviGraph Member 2 Pipeline Runner")
     parser.add_argument("--data", type=str, default=None, help="Path to CSV or Parquet flow dataset, or 'all'")
-    parser.add_argument("--model", type=str, default="xgb", choices=["xgb", "gnn"], help="Detector model architecture: 'xgb' or 'gnn'")
+    parser.add_argument("--model", type=str, default="ensemble", choices=["ensemble", "xgb", "autoencoder", "histgb", "gnn"], help="Detector model architecture: 'ensemble', 'xgb', 'autoencoder', 'histgb', or 'gnn'")
     parser.add_argument("--max-rows", type=int, default=None, help="Max rows to process (useful for rapid testing)")
     args = parser.parse_args()
 
     if args.data == "all":
         loader = FlowDataLoader()
-        sample_size = args.max_rows or 15000
+        sample_size = args.max_rows  # None loads the complete 2.64M enterprise dataset
         raw_df = loader.load_combined_dataset(max_per_attack=sample_size, benign_per_file=sample_size)
+        run_pipeline(raw_df=raw_df, model_type=args.model)
+    elif args.data in ["processed", "preprocessed"]:
+        from src.config import PROCESSED_DATA_DIR
+        full_proc_path = PROCESSED_DATA_DIR / "benchmark_full_340k.parquet"
+        print(f"[Main] Loading archived preprocessed benchmark dataset from: {full_proc_path}")
+        raw_df = pd.read_parquet(full_proc_path)
+        if args.max_rows and len(raw_df) > args.max_rows:
+            sampled_slices = []
+            for _, grp in raw_df.groupby("label"):
+                n_take = max(20, int(args.max_rows * len(grp) / len(raw_df)))
+                sampled_slices.append(grp.head(n_take))
+            raw_df = pd.concat(sampled_slices, ignore_index=True)
+        run_pipeline(raw_df=raw_df, model_type=args.model)
+    elif args.data in ["new_benchmark", "new", "new_benchmarks"] or (args.data and Path(args.data).is_dir()):
+        from src.config import BASE_DIR
+        target_dir = Path(args.data) if (args.data and Path(args.data).is_dir()) else (BASE_DIR / "data" / "new_benchmark")
+        benchmark_files = sorted(list(target_dir.glob("*.parquet")) + list(target_dir.glob("*.csv")))
+        print(f"[Main] Loading external new benchmark datasets from: {target_dir}")
+        for bf in benchmark_files:
+            print(f"   -> {bf.name}")
+        loader = FlowDataLoader()
+        raw_df = loader.load_combined_dataset(file_paths=benchmark_files, max_per_attack=args.max_rows, benign_per_file=args.max_rows)
         run_pipeline(raw_df=raw_df, model_type=args.model)
     elif args.data:
         target_file = Path(args.data)
