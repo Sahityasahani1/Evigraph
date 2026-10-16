@@ -24,6 +24,8 @@ METADATA_COLS = [
     "src_port",
     "dst_port",
     "protocol",
+    "src_mac",
+    "dst_mac",
     "evidence_id",
     "label"
 ]

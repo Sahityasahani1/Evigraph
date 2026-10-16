@@ -73,6 +73,7 @@ class IncidentClusterEngine:
         # 3. Cluster Connected Components into Incident Candidates
         incidents = []
         components = list(nx.connected_components(self.alert_graph))
+        num_alerts = len(alerts_df)
         print(f"[IncidentEngine] Correlated {num_alerts} alerts into {len(components)} incident clusters")
 
         for inc_idx, comp_nodes in enumerate(components):
@@ -89,7 +90,8 @@ class IncidentClusterEngine:
             
             max_risk = float(sub_alerts["risk_score"].max())
             mean_risk = float(sub_alerts["risk_score"].mean())
-            attack_classes = list(sub_alerts["predicted_class"].unique())
+            raw_classes = [c for c in sub_alerts["predicted_class"].unique() if c != "BENIGN"]
+            attack_classes = raw_classes if raw_classes else ["Suspicious-Anomaly"]
             
             # Suspected Entry Point: Source IP of the earliest alert in the incident
             earliest_alert = sub_alerts.sort_values(by="timestamp").iloc[0]
