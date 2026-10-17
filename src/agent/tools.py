@@ -13,6 +13,7 @@ class ForensicTools:
         self.incidents = {i.incident_id: i for i in cases.incidents}
         self.kb = kb
         self.evidence: set[str] = set()  # every flow_id the agent has been shown
+        self.techniques_seen: set[str] = set()  # every ATT&CK ID the agent has been shown   
 
     def _note(self, *flow_ids):
         self.evidence.update(flow_ids)
@@ -54,12 +55,24 @@ class ForensicTools:
                 "first_flow_id": group[0].flow_id, "last_flow_id": group[-1].flow_id,
             })
             self._note(group[0].flow_id, group[-1].flow_id)
+        src_counts: dict[str, int] = {}
+        dst_counts: dict[str, int] = {}
+        for a in inc.alerts:
+            src_counts[a.src_ip] = src_counts.get(a.src_ip, 0) + 1
+            dst_counts[a.dst_ip] = dst_counts.get(a.dst_ip, 0) + 1
+
+        def top_hosts(counts):
+            ranked = sorted(counts, key=lambda h: (-counts[h], h))[:5]
+            return [{"host_ip": h, "alerts": counts[h]} for h in ranked]
         top = sorted(inc.alerts, key=lambda a: -a.risk_score)[:5]
         self._note(*[a.flow_id for a in top])
         return {
             "incident_id": inc.incident_id, "severity_score": inc.severity_score,
             "start": alerts[0].timestamp.isoformat(), "end": alerts[-1].timestamp.isoformat(),
-            "alert_count": len(alerts), "host_count": len(inc.hosts), "hosts": inc.hosts[:15],
+            "alert_count": len(alerts),
+            "host_count": len(inc.hosts),
+            "top_alert_sources": top_hosts(src_counts),
+            "top_alert_targets": top_hosts(dst_counts),
             "stages_in_time_order": timeline,
             "top_alerts_by_risk": [
                 {"alert_id": a.alert_id, "flow_id": a.flow_id, "timestamp": a.timestamp.isoformat(),
@@ -103,5 +116,6 @@ class ForensicTools:
         Args:
             query: Plain-language description, for example many failed SSH logins from one IP
         """
-        return {"matches": self.kb.search(query, 5),
-                "note": "Only cite technique IDs that appear in this list."}
+        matches = self.kb.search(query, 5)
+        self.techniques_seen.update(m["id"] for m in matches)
+        return {"matches": matches, "note": "Only cite technique IDs that appear in this list."}

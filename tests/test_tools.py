@@ -71,3 +71,16 @@ def test_evidence_registry_tracks_only_what_was_shown(tools):
     shown = {a["flow_id"] for a in r["top_alerts_by_risk"]}
     assert shown <= tools.evidence
     assert "flw_999999" not in tools.evidence
+
+def test_incident_names_the_real_attacker_and_the_pivot_host(tools):
+    r = tools.get_incident("INC-001")
+    sources = [h["host_ip"] for h in r["top_alert_sources"]]
+    targets = [h["host_ip"] for h in r["top_alert_targets"]]
+    assert "203.0.113.50" in sources  # external attacker must not be cut off
+    assert "10.0.0.5" in sources and "10.0.0.5" in targets  # target first, then source
+
+
+def test_search_records_techniques_shown(tools):
+    assert tools.techniques_seen == set()
+    tools.search_attack_knowledge("many failed SSH logins")
+    assert tools.techniques_seen == {"T1110"}
