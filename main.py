@@ -31,7 +31,8 @@ def run_pipeline(
     data_path: Optional[Path] = None, 
     max_rows: Optional[int] = None, 
     raw_df: Optional[pd.DataFrame] = None,
-    model_type: str = "xgb"
+    model_type: str = "xgb",
+    run_agent: bool = False
 ):
     print("=" * 60)
     print("   EVIGRAPH: MEMBER 2 (DETECTION & GRAPH ENGINE)")
@@ -125,6 +126,15 @@ def run_pipeline(
     output_file = incident_engine.export_agent_case_bundle(incidents, graph_engine)
     print(f"\n[DONE] Pipeline complete! Hand-off file generated at:\n       {output_file}")
     
+    # 7. Member 3: Downstream Forensic Reasoning & LLM Agent (RAG)
+    if run_agent:
+        print("\n" + "=" * 60)
+        print("   INVOKING MEMBER 3: FORENSIC AGENT & CITATION VALIDATOR")
+        print("=" * 60)
+        from src.agent.forensic_agent import ForensicAgent
+        agent = ForensicAgent(incident_cases_path=output_file)
+        agent.run()
+
     return output_file
 
 if __name__ == "__main__":
@@ -133,13 +143,14 @@ if __name__ == "__main__":
     parser.add_argument("--data", type=str, default=None, help="Path to CSV or Parquet flow dataset, or 'all'")
     parser.add_argument("--model", type=str, default="ensemble", choices=["ensemble", "xgb", "autoencoder", "histgb", "gnn"], help="Detector model architecture: 'ensemble', 'xgb', 'autoencoder', 'histgb', or 'gnn'")
     parser.add_argument("--max-rows", type=int, default=None, help="Max rows to process (useful for rapid testing)")
+    parser.add_argument("--agent", action="store_true", help="Automatically trigger Member 3 Forensic Agent & RAG after detection")
     args = parser.parse_args()
 
     if args.data == "all":
         loader = FlowDataLoader()
         sample_size = args.max_rows  # None loads the complete 2.64M enterprise dataset
         raw_df = loader.load_combined_dataset(max_per_attack=sample_size, benign_per_file=sample_size)
-        run_pipeline(raw_df=raw_df, model_type=args.model)
+        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent)
     elif args.data in ["processed", "preprocessed"]:
         from src.config import PROCESSED_DATA_DIR
         full_proc_path = PROCESSED_DATA_DIR / "benchmark_full_340k.parquet"
@@ -151,7 +162,7 @@ if __name__ == "__main__":
                 n_take = max(20, int(args.max_rows * len(grp) / len(raw_df)))
                 sampled_slices.append(grp.head(n_take))
             raw_df = pd.concat(sampled_slices, ignore_index=True)
-        run_pipeline(raw_df=raw_df, model_type=args.model)
+        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent)
     elif args.data in ["new_benchmark", "new", "new_benchmarks"] or (args.data and Path(args.data).is_dir()):
         from src.config import BASE_DIR
         target_dir = Path(args.data) if (args.data and Path(args.data).is_dir()) else (BASE_DIR / "data" / "new_benchmark")
@@ -161,10 +172,10 @@ if __name__ == "__main__":
             print(f"   -> {bf.name}")
         loader = FlowDataLoader()
         raw_df = loader.load_combined_dataset(file_paths=benchmark_files, max_per_attack=args.max_rows, benign_per_file=args.max_rows)
-        run_pipeline(raw_df=raw_df, model_type=args.model)
+        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent)
     elif args.data:
         target_file = Path(args.data)
-        run_pipeline(target_file, max_rows=args.max_rows, model_type=args.model)
+        run_pipeline(target_file, max_rows=args.max_rows, model_type=args.model, run_agent=args.agent)
     else:
         target_file = SAMPLES_DATA_DIR / "sample_cicids2017_flows.csv"
         if not target_file.exists():
@@ -173,4 +184,4 @@ if __name__ == "__main__":
             df = generate_flows()
             target_file.parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(target_file, index=False)
-        run_pipeline(target_file, max_rows=args.max_rows, model_type=args.model)
+        run_pipeline(target_file, max_rows=args.max_rows, model_type=args.model, run_agent=args.agent)

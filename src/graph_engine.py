@@ -108,13 +108,14 @@ class HostGraphEngine:
         Extracts the k-hop induced neighborhood around hosts participating in alert flows.
         Returns serialized Cytoscape-compatible JSON structure.
         """
-        # Find all hosts involved in alerts with O(1) set lookup
+        # Find all hosts involved in this specific incident's alerts with O(1) set lookup
         alert_ids_set = set(alert_flow_ids)
         alert_hosts = set()
         alert_edges = []
         
         for u, v, k, data in self.graph.edges(keys=True, data=True):
-            if data.get("flow_id") in alert_ids_set or data.get("is_alert", False):
+            fid = str(data.get("flow_id", str(k)))
+            if fid in alert_ids_set:
                 alert_hosts.add(u)
                 alert_hosts.add(v)
                 alert_edges.append((u, v, k, data))
@@ -148,15 +149,16 @@ class HostGraphEngine:
                 "alerts_received": int(d.get("alerts_received", 0))
             })
             
-        # Serialize edges: PRIORITIZE alert evidence edges first (TRD NFR-4 & AGENTS.md contract)
-        alert_edges_payload = []
-        context_edges_payload = []
-        max_alert_edges = 300
+        # Serialize edges: GUARANTEE that all primary incident evidence edges are included first
+        primary_incident_edges = []
+        other_alert_edges = []
+        context_edges = []
         max_context_edges = 100
         
         for u, v, k, d in subgraph.edges(keys=True, data=True):
             fid = str(d.get("flow_id", str(k)))
-            is_incident_alert = (fid in alert_ids_set) or bool(d.get("is_alert", False))
+            is_primary = fid in alert_ids_set
+            is_alert = is_primary or bool(d.get("is_alert", False))
             
             edge_dict = {
                 "edge_id": fid,
@@ -167,19 +169,19 @@ class HostGraphEngine:
                 "protocol": int(d.get("protocol", 6)),
                 "risk_score": float(d.get("risk_score", 0.0)),
                 "predicted_class": str(d.get("predicted_class", "BENIGN")),
-                "is_alert": is_incident_alert
+                "is_alert": is_alert
             }
             if d.get("shap_explanation"):
                 edge_dict["shap_explanation"] = d.get("shap_explanation")
                 
-            if is_incident_alert:
-                if len(alert_edges_payload) < max_alert_edges:
-                    alert_edges_payload.append(edge_dict)
+            if is_primary:
+                primary_incident_edges.append(edge_dict)
+            elif is_alert:
+                other_alert_edges.append(edge_dict)
             else:
-                if len(context_edges_payload) < max_context_edges:
-                    context_edges_payload.append(edge_dict)
+                context_edges.append(edge_dict)
 
-        edges_payload = alert_edges_payload + context_edges_payload
+        edges_payload = primary_incident_edges + other_alert_edges[:100] + context_edges[:max_context_edges]
 
         return {
             "node_count": len(nodes_payload),

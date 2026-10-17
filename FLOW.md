@@ -1,7 +1,7 @@
 # EviGraph: End-to-End System & Data Flow Specification
 
 > **Comprehensive operational, architectural, and dataflow lifecycle for the EviGraph Network Forensic Framework.**  
-> *Companion Documents:* [`ARCHITECTURE.md`](file:///c:/sahityaa/CN%20project/ARCHITECTURE.md) | [`PRD.md`](file:///c:/sahityaa/CN%20project/PRD.md) | [`AGENTS.md`](file:///c:/sahityaa/CN%20project/AGENTS.md)
+> *Companion Documents:* [`ARCHITECTURE.md`](file:///c:/sahityaa/CN%20project/ARCHITECTURE.md) | [`PRD.md`](file:///c:/sahityaa/CN%20project/PRD.md) | [`DESIGN_SYSTEM.md`](file:///c:/sahityaa/CN%20project/DESIGN_SYSTEM.md)
 
 ---
 
@@ -22,11 +22,14 @@ flowchart TD
         SPLIT --> FEATS["77 Statistical Numerical Features (Lengths, IAT, Flags, Rates)"]
     end
 
-    subgraph S3 ["Stage 3: Detection & Probability Calibration"]
-        FEATS --> XGB["Multi-Class XGBoost Classifier<br/>(CUDA GPU Acceleration, Class-Balanced Weights)"]
-        FEATS -.-> GNN["PyG Edge-GraphSAGE GNN<br/>(Optional Structural Detector)"]
-        XGB --> PLATT["Platt Scaling Risk Calibration<br/>(Logistic Regression on Decision Margins)"]
-        PLATT --> THRESH["Validation F1 Threshold Optimization<br/>(Alert Cutoff tau = 0.475)"]
+    subgraph S3 ["Stage 3: Multi-Model Detection & Risk Fusion"]
+        FEATS --> MOD_ENS["Tri-Pillar Defense Ensemble (Default)<br/>[XGBoost + HistGB + Deep Autoencoder]"]
+        FEATS -.-> MOD_XGB["XGBoost Multi-Class (GPU Hist)"]
+        FEATS -.-> MOD_AE["PyTorch Deep Autoencoder (Zero-Day Anomaly)"]
+        FEATS -.-> MOD_HGB["Scikit-Learn HistGradientBoosting"]
+        FEATS -.-> MOD_GNN["PyG Edge-GraphSAGE Topological GNN"]
+        MOD_ENS --> CALIB["Learned Logistic Probability Calibration"]
+        CALIB --> THRESH["Validation F1 Threshold Optimization<br/>(Alert Cutoff tau = 0.475)"]
     end
 
     subgraph S4 ["Stage 4: Test Scoring & Alert Generation"]
@@ -111,13 +114,28 @@ To adhere strictly to forensic anti-leakage rules (TRD Section 3.2):
 
 ---
 
-### Stage 3: Supervised Detection & Risk Calibration
-* **Model:** Multi-class `xgboost.XGBClassifier` utilizing `tree_method='hist'` with NVIDIA CUDA hardware acceleration.
-* **Balanced Sample Weighting:** Addresses severe class imbalance (e.g., Benign vs. Heartbleed):
-  $$w_c = \frac{N}{C \cdot N_c}$$
-* **Platt Scaling Probability Calibration:** Raw tree decision margins are calibrated using a logistic regression estimator:
-  $$P(\text{Malicious} \mid \mathbf{x}) = \frac{1}{1 + \exp(A \cdot \text{margin}(\mathbf{x}) + B)}$$
-* **Threshold Tuning:** Sweeps cutoffs across validation data to maximize the F1-score, establishing the operational threshold $\tau = 0.475$.
+### Stage 3: Multi-Model Detection, Zero-Day Anomaly Scoring & Risk Fusion
+EviGraph provides 5 selectable detection paradigms (`--model`), defaulting to the **Tri-Pillar Defense-in-Depth Ensemble**:
+
+1. **Tri-Pillar Meta-Ensemble (`src/detectors/ensemble_fuser.py` — Default):**
+   * Stacks three distinct inductive biases:
+     * **XGBoost:** High-precision supervised gradient boosting on 77 statistical flow metrics.
+     * **HistGradientBoosting:** Fast scikit-learn native boosting with zero-nan penalty.
+     * **Deep Flow Autoencoder:** Unsupervised PyTorch reconstruction model detecting zero-day traffic shifts.
+   * A calibrated stacking logistic fuser merges model risk signals into a defensible posterior probability $P(\text{Malicious} \mid \mathbf{x})$.
+2. **Supervised Baseline Classifier (`src/baseline_detector.py`):**
+   * Multi-class `xgboost.XGBClassifier` with `tree_method='hist'` and balanced sample weights:
+     $$w_c = \frac{N}{C \cdot N_c}$$
+   * Calibrated using Platt Scaling / Logistic Regression on decision margins:
+     $$P(\text{Malicious} \mid \mathbf{x}) = \frac{1}{1 + \exp(A \cdot \text{margin}(\mathbf{x}) + B)}$$
+3. **Unsupervised Zero-Day Autoencoder (`src/detectors/autoencoder_detector.py`):**
+   * 4-layer symmetric MLP trained solely on benign flows ($D_{\text{in}} \to 48 \to 24 \to 8 \to 24 \to 48 \to D_{\text{in}}$).
+   * Computes per-flow reconstruction Mean Squared Error (MSE); scores above the benign baseline indicate novel attack behavior.
+4. **Native HistGradientBoosting (`src/detectors/hist_gb_detector.py`):**
+   * Ultra-fast histogram decision trees with Platt risk calibration.
+5. **Inductive PyG Edge-GraphSAGE (`src/gnn_detector.py`):**
+   * 2-layer GraphSAGE message passing over host-to-host multi-edge subgraphs.
+* **Operational Threshold Tuning:** Sweeps cutoffs across validation data to maximize the F1-score, establishing the operational threshold $\tau \approx 0.475 - 0.65$.
 
 ---
 
@@ -211,26 +229,68 @@ To adhere strictly to forensic anti-leakage rules (TRD Section 3.2):
 
 ## 4. Execution & Verification Guide
 
-### 1. Rapid Sample Verification
+### 1. Rapid Sample Verification (Default: Tri-Pillar Ensemble)
 Run on the synthetic multi-stage test fixture:
 ```bash
 python main.py
 ```
 
-### 2. Full 2.64M Enterprise Pipeline Execution
-Run end-to-end on all raw parquet and CSV captures with CUDA GPU acceleration:
+### 2. Choose Detection Architecture
+Run any of the 5 supported model options:
 ```bash
-python -u main.py --data all
+# Tri-Pillar Meta-Ensemble (Default - XGBoost + HistGB + Deep Autoencoder)
+python main.py --model ensemble
+
+# Supervised XGBoost Baseline Classifier
+python main.py --model xgb
+
+# Unsupervised PyTorch Deep Autoencoder (Zero-Day Anomaly Detection)
+python main.py --model autoencoder
+
+# Scikit-Learn Native HistGradientBoosting
+python main.py --model histgb
+
+# PyTorch Geometric Inductive Edge-GraphSAGE
+python main.py --model gnn
 ```
 
-### 3. PyTorch Geometric GNN Alternative
-Train the 2-layer Edge-GraphSAGE topological edge classifier:
+### 3. Execution on Scaled Telemetry & Benchmarks
 ```bash
-python -u main.py --data all --model gnn
+# Fast evaluation on preprocessed 340k benchmark partition (data/processed/):
+python main.py --data processed
+
+# Full end-to-end execution on all 2.64M enterprise captures with CUDA acceleration:
+python -u main.py --data all
+
+# Cross-dataset evaluation on external benchmark suite (APT-C2, DDoS2019, UNSW-NB15):
+python main.py --data new_benchmark
+
+# Rapid evaluation with flow capping:
+python main.py --data data/raw/Tuesday-WorkingHours.pcap_ISCX.csv.parquet --max-rows 50000
 ```
 
 ### 4. Inspecting Generated Incidents
 Inspect the generated hand-off bundle:
 ```bash
 python -c "import json; d=json.load(open('outputs/incident_cases.json')); print(f'Total Incidents: {d[\"total_incidents\"]}'); print('Top incident:', d['incidents'][0]['incident_id'], d['incidents'][0]['incident_score'], d['incidents'][0]['attack_classes'])"
+```
+
+### 5. Executing Member 3: Downstream Forensic Reasoning & RAG
+Run the integrated pipeline with the autonomous reasoning agent enabled:
+```bash
+# Automated end-to-end detection, graph correlation, and verified reporting:
+python main.py --agent
+
+# Or run the forensic agent independently on an existing case package:
+python -m src.agent.forensic_agent
+```
+Outputs are exported to `outputs/forensic_incident_report.md` with verifiable `[E:<flow_id>]` evidence citations, verified by `CitationValidator` (`outputs/citation_validation_results.json`).
+
+### 6. Verifying Ollama & Running Unit Tests
+```bash
+# Verify local Ollama runtime and tool-calling:
+python tests/check_ollama.py
+
+# Run the complete test suite:
+python -m unittest discover -s tests
 ```

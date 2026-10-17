@@ -11,7 +11,7 @@ import networkx as nx
 import pandas as pd
 import numpy as np
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from src.config import ALERT_CORRELATION_WINDOW_SECS, OUTPUTS_DIR
@@ -169,7 +169,7 @@ class IncidentClusterEngine:
         case_package = {
             "version": "1.0",
             "generator": "EviGraph Member 2 (Detection & Graph Engine)",
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "total_incidents": len(enriched_incidents),
             "incidents": enriched_incidents
         }

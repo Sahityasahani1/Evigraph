@@ -33,6 +33,7 @@ models/*.joblib
 # Logs and outputs
 *.log
 outputs/*.json
+outputs/*.md
 !outputs/.gitkeep
 
 # IDE and OS
