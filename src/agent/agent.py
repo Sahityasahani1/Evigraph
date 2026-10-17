@@ -3,6 +3,7 @@
 playbook=True  (default): our code first runs the mandatory lookups, then the model writes.
 playbook=False (free)    : the model alone decides which tools to call.
 """
+from itertools import zip_longest
 import json
 import re
 import sys
@@ -48,11 +49,11 @@ CLASS_DESCRIPTIONS = {
         "DoS slowloris": "slow HTTP connections exhausting a web server (denial of service)",
         "DoS Slowhttptest": "slow HTTP connections exhausting a web server (denial of service)",
         "DDoS": "distributed denial of service flood of traffic from many sources",
-        "Bot": "infected host beaconing to a command and control server (botnet)",
+        "Bot": "infected host repeatedly beaconing to a command and control server over web protocols",
         "Infiltration": "large outbound data transfer to an external server (data exfiltration)",
         "Web Attack Brute Force": "repeated login attempts guessing passwords on a web application",
         "Web Attack XSS": "cross-site scripting attack against a web application",
-        "Web Attack Sql Injection": "SQL injection attack against a public-facing web application",
+        "Web Attack Sql Injection": "SQL injection exploiting a vulnerability in a public-facing web application",
         "Heartbleed": "exploiting a vulnerability in a public-facing service to leak memory",
     }.items()
 }
@@ -61,6 +62,16 @@ CLASS_DESCRIPTIONS = {
 def _stage_query(attack_class: str) -> str:
     return CLASS_DESCRIPTIONS.get(_norm(attack_class), f"{attack_class} network attack")
 
+def pick_hosts(inc: dict, limit: int = 4) -> list[str]:
+    """Hosts to look up in full: pivot hosts first, then alternate busiest target / busiest source."""
+    sources = [h["host_ip"] for h in inc["top_alert_sources"]]
+    targets = [h["host_ip"] for h in inc["top_alert_targets"]]
+    chosen = [h for h in sources if h in targets]
+    for pair in zip_longest(targets, sources):
+        for h in pair:
+            if h and h not in chosen:
+                chosen.append(h)
+    return chosen[:limit]
 
 class ForensicAgent:
     def __init__(self, tools: ForensicTools, model: str = MODEL, max_steps: int = 8, chat_fn=None):
@@ -88,11 +99,7 @@ class ForensicAgent:
         inc = run("get_incident", incident_id=incident_id)
         if "error" in inc:
             return None, inc["error"]
-        hosts: list[str] = []
-        for h in inc["top_alert_sources"] + inc["top_alert_targets"]:
-            if h["host_ip"] not in hosts:
-                hosts.append(h["host_ip"])
-        summaries = {h: run("host_summary", host_ip=h) for h in hosts[:4]}
+        summaries = {h: run("host_summary", host_ip=h) for h in pick_hosts(inc)}
         attack = {}
         for stage in inc["stages_in_time_order"]:
             cls = stage["attack_class"]

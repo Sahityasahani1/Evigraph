@@ -1,0 +1,74 @@
+[
+ {
+  "incident": "INC-E1",
+  "title": "SSH brute force",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": []
+ },
+ {
+  "incident": "INC-E2",
+  "title": "Brute force then scan (pivot)",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": []
+ },
+ {
+  "incident": "INC-E3",
+  "title": "DDoS on web server",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": []
+ },
+ {
+  "incident": "INC-E4",
+  "title": "Data exfiltration",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": []
+ },
+ {
+  "incident": "INC-E5",
+  "title": "Botnet beaconing",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": []
+ },
+ {
+  "incident": "INC-E6",
+  "title": "SQL injection",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": []
+ }
+]

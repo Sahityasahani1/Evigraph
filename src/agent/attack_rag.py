@@ -21,6 +21,9 @@ HINTS = {
     "T1595": "scanning, probing, reconnaissance of target addresses and open ports",
     "T1595.001": "IP block scan, ping sweep of an address range",
     "T1595.002": "vulnerability scan of exposed services",
+    "T1190": "SQL injection, web attack against a public-facing web server, exploiting a web application vulnerability, malicious HTTP requests",
+    "T1071": "botnet command and control, infected host beaconing to a control server at regular intervals over web protocols",
+    "T1071.001": "botnet beaconing over HTTP or HTTPS web traffic to a command and control server",
 }
 
 
