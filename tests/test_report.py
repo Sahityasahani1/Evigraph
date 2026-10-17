@@ -13,7 +13,7 @@ class FakeKB:
         return [{"id": "T1110", "name": "Brute Force", "tactics": ["credential-access"], "score": 0.9}]
 
 
-def make_agent(build):
+def make_agent(build, summary=None):
     tools = ForensicTools(
         FlowStore("data/sample/sample_flows.csv"),
         load_incidents("data/sample/sample_incident_cases.json"),
@@ -21,13 +21,16 @@ def make_agent(build):
     )
 
     def chat(**kwargs):
+        system = kwargs["messages"][0]["content"]
         content = kwargs["messages"][1]["content"]
-        out = build(content)
+        if "executive summary" in system:
+            out = summary(content) if summary else "not json"
+        else:
+            out = build(content)
         text = out if isinstance(out, str) else json.dumps(out)
         return NS(message=NS(content=text, tool_calls=None))
 
     return ForensicAgent(tools, chat_fn=chat)
-
 
 def one(claim, flow_ids=None, technique_id=None):
     return lambda c: {"findings": [{
@@ -89,3 +92,33 @@ def test_evidence_does_not_leak_between_incidents():
     generate_report(agent, "INC-001")
     r = generate_report(agent, "INC-002")
     assert "SSH-Patator" not in r["report"]
+
+NO_FINDINGS = lambda c: {"findings": []}
+
+
+def test_grounded_summary_is_shown():
+    good = lambda c: {"summary": "Host 203.0.113.50 brute-forced 10.0.0.5, which then scanned other hosts."}
+    r = generate_report(make_agent(NO_FINDINGS, good), "INC-001")
+    assert r["summary"] and "## Executive summary (model-written, verified)" in r["report"]
+
+
+def test_summary_with_invented_number_is_withheld():
+    bad = lambda c: {"summary": "Host 203.0.113.50 sent 500000 packets to 10.0.0.5."}
+    r = generate_report(make_agent(NO_FINDINGS, bad), "INC-001")
+    assert r["summary"] is None and "Withheld" in r["report"]
+
+
+def test_summary_with_unknown_ip_is_withheld():
+    bad = lambda c: {"summary": "Traffic went to 8.8.8.8 after the attack."}
+    r = generate_report(make_agent(NO_FINDINGS, bad), "INC-001")
+    assert r["summary"] is None and "IPs" in r["summary_note"]
+
+
+def test_unparseable_summary_is_withheld():
+    r = generate_report(make_agent(NO_FINDINGS), "INC-001")  # fake returns "not json"
+    assert r["summary"] is None and "could not be parsed" in r["summary_note"]
+
+
+def test_finding_with_invented_number_is_rejected():
+    r = generate_report(make_agent(one("203.0.113.50 sent 9999 packets.")), "INC-001")
+    assert not r["accepted"] and "numbers" in r["rejected"][0]["problems"][0]

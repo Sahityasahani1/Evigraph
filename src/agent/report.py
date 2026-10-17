@@ -1,4 +1,4 @@
-"""Verified reporting: the LLM proposes findings, code checks every one, code writes the report."""
+"""Verified reporting: the LLM proposes findings and a summary, code checks every one, code writes the report."""
 import json
 import re
 
@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, ValidationError
 IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 FLOW_RE = re.compile(r"\bflw_\d+\b")
 TECH_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
+NUM_RE = re.compile(r"\d+(?:\.\d+)?")
 
 
 class Finding(BaseModel):
@@ -17,6 +18,10 @@ class Finding(BaseModel):
 
 class FindingList(BaseModel):
     findings: list[Finding]
+
+
+class Summary(BaseModel):
+    summary: str
 
 
 FINDINGS_PROMPT = """You are a network forensic analyst. From the incident data provided, propose 3 to 6 findings.
@@ -30,24 +35,49 @@ Rules:
 - If a host was first attacked and later attacked others, include a finding about it.
 - Do not repeat a claim."""
 
+SUMMARY_PROMPT = """You write an executive summary of a network security incident for a manager.
+Return JSON only: {"summary": str}
 
-def validate_findings(findings, tools, known_ips):
-    """Accept a finding only if everything it cites was actually shown to the agent."""
+Rules:
+- 2 to 4 plain sentences, one per attack stage in time order, using each stage's OWN start and end times from the timeline. Never use the whole incident's time span for a single stage.
+- Then one sentence on which host matters most and why.
+- Use only facts, names and numbers that appear in the report you are given. Add nothing new.
+- Say "possibly" for anything that is an inference."""
+
+
+def _numbers(text: str) -> set[str]:
+    """Numbers in a text, ignoring those inside IPs, flow IDs and ATT&CK IDs."""
+    stripped = TECH_RE.sub(" ", FLOW_RE.sub(" ", IP_RE.sub(" ", text)))
+    return set(NUM_RE.findall(stripped))
+
+
+def text_problems(text, tools, known_ips, source_text, flow_ids=(), technique_ids=()):
+    """Everything in `text` must come from what the agent was actually shown."""
+    problems = []
+    unseen = {x for x in list(flow_ids) + FLOW_RE.findall(text) if x not in tools.evidence}
+    if unseen:
+        problems.append(f"cites flows never shown to the agent: {sorted(unseen)}")
+    techs = [t for t in technique_ids if t] + TECH_RE.findall(text)
+    bad_t = {t for t in techs if t not in tools.techniques_seen}
+    if bad_t:
+        problems.append(f"cites ATT&CK IDs not in the search results: {sorted(bad_t)}")
+    bad_ip = {ip for ip in IP_RE.findall(text) if ip not in known_ips}
+    if bad_ip:
+        problems.append(f"mentions IPs not in this incident: {sorted(bad_ip)}")
+    bad_n = _numbers(text) - _numbers(source_text)
+    if bad_n:
+        problems.append(f"contains numbers not in the data: {sorted(bad_n)}")
+    return problems
+
+
+def validate_findings(findings, tools, known_ips, source_text=""):
     accepted, rejected = [], []
     for f in findings:
-        problems = []
+        problems = text_problems(
+            f.claim, tools, known_ips, source_text, f.flow_ids, [f.technique_id]
+        )
         if not f.flow_ids:
-            problems.append("cites no flow_id")
-        unseen = {x for x in f.flow_ids + FLOW_RE.findall(f.claim) if x not in tools.evidence}
-        if unseen:
-            problems.append(f"cites flows never shown to the agent: {sorted(unseen)}")
-        techs = ([f.technique_id] if f.technique_id else []) + TECH_RE.findall(f.claim)
-        bad_t = {t for t in techs if t not in tools.techniques_seen}
-        if bad_t:
-            problems.append(f"cites ATT&CK IDs not in the search results: {sorted(bad_t)}")
-        bad_ip = {ip for ip in IP_RE.findall(f.claim) if ip not in known_ips}
-        if bad_ip:
-            problems.append(f"mentions IPs not in this incident: {sorted(bad_ip)}")
+            problems.insert(0, "cites no flow_id")
         if problems:
             rejected.append({"finding": f, "problems": problems})
         else:
@@ -59,10 +89,16 @@ def _band(score: float) -> str:
     return "HIGH" if score >= 0.8 else "MEDIUM" if score >= 0.5 else "LOW"
 
 
-def build_report(briefing: dict, accepted: list, rejected: list) -> str:
+def build_report(briefing, accepted, rejected, summary=None, summary_note=None) -> str:
     inc = briefing["incident"]
     stages = inc["stages_in_time_order"]
-    L = [f"# Incident report: {inc['incident_id']}", "", "## Overview"]
+    L = [f"# Incident report: {inc['incident_id']}"]
+    if summary:
+        L += ["", "## Executive summary (model-written, verified)", summary]
+    elif summary_note:
+        L += ["", "## Executive summary", f"- Withheld: {summary_note}"]
+
+    L += ["", "## Overview"]
     L.append(f"- Severity: {inc['severity_score']} ({_band(inc['severity_score'])}; "
              "bands: >=0.8 high, >=0.5 medium)")
     L.append(f"- Time span: {inc['start']} to {inc['end']}")
@@ -71,7 +107,7 @@ def build_report(briefing: dict, accepted: list, rejected: list) -> str:
     L += ["", "## Timeline (from detector alerts)"]
     for i, s in enumerate(stages, 1):
         L.append(f"{i}. {s['first_seen']} to {s['last_seen']}: {s['attack_class']}, "
-                 f"{s['alert_count']} alerts, {', '.join(s['sources'])} -> {', '.join(s['targets'])} "
+                 f"{s['alert_count']} alerts, from {', '.join(s['sources'])} to {', '.join(s['targets'])} "
                  f"[{s['first_flow_id']}, {s['last_flow_id']}]")
 
     sources = {h["host_ip"] for h in inc["top_alert_sources"]}
@@ -117,6 +153,26 @@ def build_report(briefing: dict, accepted: list, rejected: list) -> str:
     return "\n".join(L)
 
 
+def _summarise(agent, base_report, known_ips):
+    resp = agent.chat(
+        model=agent.model,
+        messages=[{"role": "system", "content": SUMMARY_PROMPT},
+                  {"role": "user", "content": "Report:\n" + base_report}],
+        format=Summary.model_json_schema(),
+        options={"temperature": 0, "num_ctx": 8192},
+    )
+    try:
+        text = Summary.model_validate_json(resp.message.content).summary.strip()
+    except (ValidationError, ValueError):
+        return None, "model output could not be parsed"
+    if not text:
+        return None, "model returned an empty summary"
+    problems = text_problems(text, agent.tools, known_ips, base_report)
+    if problems:
+        return None, "failed verification: " + "; ".join(problems)
+    return text, None
+
+
 def generate_report(agent, incident_id: str) -> dict:
     tools = agent.tools
     tools.evidence.clear()  # evidence is tracked per incident
@@ -126,11 +182,11 @@ def generate_report(agent, incident_id: str) -> dict:
     if err:
         return {"report": None, "error": err, "tool_calls": calls}
 
-    user = "Incident data:\n" + json.dumps(briefing, separators=(",", ":"), default=str)
+    source = json.dumps(briefing, separators=(",", ":"), default=str)
     resp = agent.chat(
         model=agent.model,
         messages=[{"role": "system", "content": FINDINGS_PROMPT},
-                  {"role": "user", "content": user}],
+                  {"role": "user", "content": "Incident data:\n" + source}],
         format=FindingList.model_json_schema(),
         options={"temperature": 0, "num_ctx": 8192},
     )
@@ -141,10 +197,14 @@ def generate_report(agent, incident_id: str) -> dict:
         findings, parse_error = [], True
 
     known_ips = set(tools.incidents[incident_id].hosts)
-    accepted, rejected = validate_findings(findings, tools, known_ips)
+    accepted, rejected = validate_findings(findings, tools, known_ips, source)
+
+    base = build_report(briefing, accepted, rejected)
+    summary, summary_note = _summarise(agent, base, known_ips)
     return {
-        "report": build_report(briefing, accepted, rejected), "error": None,
-        "accepted": accepted, "rejected": rejected,
+        "report": build_report(briefing, accepted, rejected, summary, summary_note),
+        "error": None, "accepted": accepted, "rejected": rejected,
+        "summary": summary, "summary_note": summary_note,
         "parse_error": parse_error, "tool_calls": calls,
     }
 
