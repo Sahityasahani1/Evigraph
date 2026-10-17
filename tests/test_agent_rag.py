@@ -68,6 +68,16 @@ class TestForensicAgentAndRAG(unittest.TestCase):
         self.assertIn("edge_id", evidence)
         self.assertEqual(evidence["edge_id"], first_flow)
 
+        # Test 5: verify_evidence_merkle_proof tool
+        proof_res = agent.verify_evidence_merkle_proof(first_flow)
+        self.assertIn("flow_id", proof_res)
+        self.assertIn("status", proof_res)
+
+        # Test 6: get_causal_attack_chain tool
+        chain_res = agent.get_causal_attack_chain(incidents[0]["incident_id"])
+        self.assertIn("incident_id", chain_res)
+        self.assertIn("primary_attack_chain", chain_res)
+
     def test_mitre_attack_mapping(self):
         agent = ForensicAgent(self.cases_file)
         mapping = agent.map_to_mitre_attack("PortScan")

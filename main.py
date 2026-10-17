@@ -126,6 +126,21 @@ def run_pipeline(
     output_file = incident_engine.export_agent_case_bundle(incidents, graph_engine)
     print(f"\n[DONE] Pipeline complete! Hand-off file generated at:\n       {output_file}")
     
+    # 6.5 Cryptographic Merkle Chain-of-Custody Certification (Milestone 1 USP)
+    print("\n--- Constructing Cryptographic Merkle Evidence Ledger ---")
+    from src.integrity.merkle_engine import MerkleEvidenceEngine
+    merkle_engine = MerkleEvidenceEngine()
+    root_hash = merkle_engine.build_tree(scored_test_df)
+    merkle_engine.enrich_incident_case_package(output_file)
+    cert_file = merkle_engine.export_forensic_certificate(incident_cases_path=output_file)
+    print(f"[MerkleEngine] Certified Session Merkle Root: {root_hash}")
+    
+    # 6.6 Temporal Causal Provenance DAG & Attack FSM (Milestone 2 USP)
+    print("\n--- Constructing Temporal Causal Provenance DAGs & MITRE FSM ---")
+    from src.causal_provenance import CausalProvenanceEngine
+    causal_engine = CausalProvenanceEngine()
+    causal_engine.enrich_incident_case_package(output_file)
+
     # 7. Member 3: Downstream Forensic Reasoning & LLM Agent (RAG)
     if run_agent:
         print("\n" + "=" * 60)
@@ -135,6 +150,30 @@ def run_pipeline(
         agent = ForensicAgent(incident_cases_path=output_file)
         agent.run()
 
+        # 8. Autonomous Surgical Containment & Blast-Radius Engine (USP)
+        print("\n" + "=" * 60)
+        print("   INVOKING SURGICAL CONTAINMENT & BLAST-RADIUS ENGINE (USP)")
+        print("=" * 60)
+        from src.mitigation.countermeasure_engine import CountermeasureEngine
+        mitigation_engine = CountermeasureEngine(incident_cases_path=output_file)
+        mitigation_engine.run()
+
+        # 9. Privacy-Preserving Redacted Proof Engine (USP)
+        print("\n" + "=" * 60)
+        print("   INVOKING PRIVACY-PRESERVING REDACTED PROOF ENGINE (USP)")
+        print("=" * 60)
+        from src.integrity.privacy_proofs import PrivacyPreservingProofEngine
+        privacy_engine = PrivacyPreservingProofEngine(incident_cases_path=output_file)
+        privacy_engine.run()
+
+        # 10. Counterfactual "What-If" Resilience Simulator (USP)
+        print("\n" + "=" * 60)
+        print("   INVOKING COUNTERFACTUAL WHAT-IF RESILIENCE SIMULATOR (USP)")
+        print("=" * 60)
+        from src.simulation.counterfactual_engine import CounterfactualResilienceSimulator
+        sim_engine = CounterfactualResilienceSimulator(incident_cases_path=output_file)
+        sim_engine.run()
+
     return output_file
 
 if __name__ == "__main__":
@@ -143,7 +182,7 @@ if __name__ == "__main__":
     parser.add_argument("--data", type=str, default=None, help="Path to CSV or Parquet flow dataset, or 'all'")
     parser.add_argument("--model", type=str, default="ensemble", choices=["ensemble", "xgb", "autoencoder", "histgb", "gnn"], help="Detector model architecture: 'ensemble', 'xgb', 'autoencoder', 'histgb', or 'gnn'")
     parser.add_argument("--max-rows", type=int, default=None, help="Max rows to process (useful for rapid testing)")
-    parser.add_argument("--agent", action="store_true", help="Automatically trigger Member 3 Forensic Agent & RAG after detection")
+    parser.add_argument("--agent", action="store_true", help="Automatically trigger Member 3 Forensic Agent, Courtroom Auditor, Containment, Privacy, and Simulator after detection")
     args = parser.parse_args()
 
     if args.data == "all":

@@ -5,5 +5,6 @@ Connects Upstream Detection & Graph Engine (Member 2) with Downstream Forensic R
 
 from .citation_validator import CitationValidator
 from .forensic_agent import ForensicAgent
+from .courtroom_auditor import CourtroomCrossExaminer
 
-__all__ = ["CitationValidator", "ForensicAgent"]
+__all__ = ["CitationValidator", "ForensicAgent", "CourtroomCrossExaminer"]

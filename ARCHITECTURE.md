@@ -50,10 +50,16 @@ flowchart TD
 
 ## 2. Component Design & Implementation
 
-### 2.1 Ingestion & Integrity Layer (Stage 1)
+### 2.1 Ingestion & Integrity Layer (Stage 1 & Cryptographic Ledger)
 * **Hash Integrity:** Every raw input file (PCAP, CSV, Parquet) is streamed into the evidence store in read-only mode while calculating its SHA-256 digest.
 * **Audit Chain:** Transformations generate an append-only audit trail where each entry records:
   $$\text{Entry Hash}_k = \text{SHA256}(\text{actor} \,\|\, \text{action} \,\|\, \text{params} \,\|\, \text{input\_hashes} \,\|\, \text{Entry Hash}_{k-1})$$
+* **Hierarchical Merkle Evidence Tree (`src/integrity/merkle_engine.py` — Core USP):**
+  * Computes a deterministic canonical string for each network flow across standard fields (`flow_id`, `src_ip`, `dst_ip`, `src_port`, `dst_port`, `protocol`, `timestamp`).
+  * Hashes records into cryptographic leaves $H_{\text{leaf}} = \text{SHA256}(\text{canonical\_flow})$.
+  * Recursively pairs leaves into a binary Merkle Tree (RFC 6962), deriving the immutable **Session Merkle Root Hash**.
+  * Generates $O(\log N)$ **Merkle Inclusion Proofs** for every cited alert flow `[E:<flow_id>]`, proving existence without disclosing confidential background network flows.
+  * Exports `outputs/forensic_merkle_certificate.json` containing the root digest, tree depth, and verified audit paths.
 
 ### 2.2 Normalization & Anti-Leakage Feature Extraction (Stage 2)
 * **Strict Anti-Leakage Rules (TRD Sec 3.2):**
@@ -145,6 +151,128 @@ Exposes five deterministic forensic query tools to local LLMs (Ollama `llama3.2:
 * Computes the **Citation Faithfulness Score**:
   $$\text{Faithfulness} = \frac{\text{Verified Evidence Citations}}{\text{Total Citations}} \times 100\%$$
 * Enforces the PRD threshold ($\ge 95\%$), failing or suppressing ungrounded sentences if hallucinations occur. Verified at **100.0% faithfulness** across enterprise benchmark suites.
+
+---
+
+### 2.5 Temporal Causal Provenance DAG & Attack Stage FSM (`src/causal_provenance.py` — Core USP)
+
+Replaces naive alert clustering with a mathematically rigorous causal reachability graph:
+
+#### 1. Lamport Temporal Arrow of Time & Acyclicity
+* Evaluates strict monotonic temporal precedence:
+  $$\Delta t = t_2 - t_1 \ge 0$$
+* A causal trigger edge $e_1 \longrightarrow e_2$ is established under two valid operational conditions:
+  1. **Direct Continuation:** Same attacker expanding against targets within active scan window ($0 \le \Delta t \le 180s$).
+  2. **Lateral Pivot:** Victim host of $e_1$ becomes the source attacker of $e_2$ after network dwell latency:
+     $$\tau_{\text{min\_dwell}} \;(0.05s) \le \Delta t \le \tau_{\text{max\_dwell}} \;(600s)$$
+* **Guaranteed DAG Acyclicity:** Because edges strictly satisfy $t_1 < t_2$, $G_{\text{causal}}$ is mathematically impossible to contain cycles ($\text{DAG}=\text{True}$).
+
+#### 2. Six-Stage MITRE ATT&CK Progression FSM
+Maps intrusion behaviors into six hierarchical tactical ranks:
+$$\text{Reconnaissance (1)} \to \text{Initial Access (2)} \to \text{Credential Access (3)} \to \text{Lateral Movement (4)} \to \text{C2 (5)} \to \text{Exfil \& Impact (6)}$$
+* Calculates causal transition confidence:
+  $$\text{Confidence}(e_1 \to e_2) = 0.40 \cdot \text{FSM\_Score} + 0.35 \cdot e^{-\frac{\Delta t}{120.0}} + 0.25 \cdot \text{Risk}(e_2) + \text{PivotBonus}$$
+
+#### 3. Primary Attack Chain Discovery
+* Uses topological dynamic programming to find the longest and highest-confidence causal trajectory through the DAG from entry breach to termination objective, pruning coincidental background noise.
+
+---
+
+### 2.6 Dual-Agent Adversarial Courtroom Cross-Examiner (`src/agent/courtroom_auditor.py` — Core USP)
+
+Single-agent LLM systems in cybersecurity often generate superficially convincing forensic narratives that hallucinate ungrounded connections, violate physical network protocols, or invent lateral hops. In high-stakes regulatory audits and digital litigation under **Federal Rules of Evidence Rule 902(13)/(14)** and **ISO/IEC 27037**, a report is worthless unless it survives ruthless adversarial cross-examination.
+
+EviGraph solves this via a **Dual-Agent Adversarial Courtroom Architecture**:
+1. **Prosecuting Investigator (`ForensicAgent`):** Investigates incidents, queries telemetry tools, maps MITRE tactics, and drafts the initial forensic narrative citing immutable flow IDs `[E:<flow_id>]`.
+2. **Skeptical Defense Auditor (`CourtroomCrossExaminer`):** Acts as an independent defense examiner whose sole objective is to challenge, poke holes in, and invalidate the investigator's claims across **4 Orthogonal Verification Gates**:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Inv as Investigating Agent (ForensicAgent)
+    participant Aud as Adversarial Auditor (CourtroomCrossExaminer)
+    participant MKL as Cryptographic Merkle Ledger (RFC-6962)
+    participant DAG as Causal Provenance DAG (Lamport FSM)
+    participant TEL as Raw NetFlow Telemetry
+
+    Inv->>Aud: Submits Forensic Report with Citations [E:<flow_id>]
+    
+    rect rgb(240, 248, 255)
+        Note over Aud,MKL: Gate 1: Cryptographic Admissibility Audit
+        Aud->>MKL: Query O(log N) Sibling Audit Proofs for each [E:<flow_id>]
+        MKL-->>Aud: Return Merkle Proof Steps & Leaf Digest
+        Aud->>Aud: Recompute SHA-256 Hash Path to Session Merkle Root
+        Aud-->>Aud: Rule on OBJECTION_CRYPTOGRAPHIC_TAMPERING
+    end
+
+    rect rgb(255, 250, 240)
+        Note over Aud,TEL: Gate 2: Physical Layer-4 Protocol Feasibility
+        Aud->>TEL: Lookup Protocol Number & Destination Port
+        Aud->>Aud: Verify RFC Compliance (e.g. SSH must be TCP/22, not UDP)
+        Aud-->>Aud: Rule on OBJECTION_IMPOSSIBLE_LAYER4_PROTOCOL
+    end
+
+    rect rgb(245, 255, 245)
+        Note over Aud,DAG: Gate 3: Temporal Monotonicity & Causal Topology
+        Aud->>DAG: Cross-examine Primary Attack Chain transitions
+        Aud->>Aud: Check Lamport Monotonicity (t_1 <= t_2) & Ingress-to-Egress Pivot Path
+        Aud-->>Aud: Rule on OBJECTION_RETROGRADE_CAUSATION
+    end
+
+    rect rgb(255, 245, 245)
+        Note over Aud,TEL: Gate 4: Quantitative Telemetry Fact-Checking
+        Aud->>TEL: Compare stated incident counts, alerts & risk scores
+        Aud->>Aud: Scan prose for ungrounded assertions lacking [E:<flow_id>]
+        Aud-->>Aud: Rule on OBJECTION_UNCITED_FACTUAL_ASSERTION
+    end
+
+    Aud->>Aud: Compute Composite Admissibility Score (0.0 to 1.0)
+    Aud-->>Inv: Issues Certified Forensic Verdict (outputs/certified_forensic_verdict.json)
+```
+
+#### Admissibility Scoring & Ruling Criteria
+$$\text{Admissibility Score} = 0.35 \cdot S_{\text{merkle}} + 0.25 \cdot S_{\text{causal}} + 0.20 \cdot S_{\text{protocol}} + 0.20 \cdot S_{\text{fact\_checking}}$$
+
+* **`ADMISSIBLE_IN_COURT` ($\ge 0.95$ with 0 sustained objections):** Flawless mathematical, physical, and chronological proof-of-existence. Admissible under FRE 902(13)/(14).
+* **`CONDITIONALLY_ADMISSIBLE` ($0.80 - 0.94$):** Core causal chain verified; minor stylistic or auxiliary uncited commentary noted.
+* **`INADMISSIBLE` ($< 0.80$):** Flawed report containing broken Merkle proofs, Layer-4 protocol contradictions, or temporal paradoxes.
+
+---
+
+### 2.7 Autonomous Surgical Containment & Blast-Radius Engine (`src/mitigation/countermeasure_engine.py` — Core USP)
+
+Connects forensic investigation to zero-downtime active containment:
+1. **Min-Cut Bottleneck Formulation:** Analyzes the Primary Attack Chain and Causal DAG to identify the minimal set of network edges required to disconnect adversary entry vectors from internal victim assets.
+2. **Operational Blast-Radius Evaluation:**
+   $$\text{Blast Radius}(H) = 0.70 \cdot \text{Criticality}(H) + 0.30 \cdot \frac{\text{Deg}(H)}{50}$$
+   Evaluates listening enterprise services (DNS port 53, Kerberos 88, LDAP 389, SQL 3306/5432, Web 80/443). Critical services trigger strict surgical edge drops to avoid self-inflicted production outages.
+3. **Multi-Platform Firewall Rule Compiler:** Emits ready-to-execute scripts across Linux `iptables`/`nftables`, Windows Defender PowerShell (`New-NetFirewallRule`), Cisco IOS ACLs, and Cloud Security Group JSON specifications.
+4. **Artifacts:** Generates [`outputs/countermeasure_plan.json`](file:///c:/sahityaa/CN%20project/outputs/countermeasure_plan.json) and [`outputs/incident_containment_advisory.md`](file:///c:/sahityaa/CN%20project/outputs/incident_containment_advisory.md).
+
+---
+
+### 2.8 Privacy-Preserving Redacted Proof Engine (`src/integrity/privacy_proofs.py` — Core USP)
+
+Enables regulatory compliance (SEC Item 1.05, GDPR Art. 33) and cyber insurance claim verification without leaking confidential enterprise network crown jewels:
+1. **Salted HMAC Commitments:** Replaces sensitive internal IP addresses, ports, and metadata with cryptographic commitments:
+   $$\text{Commitment} = \text{HMAC-SHA256}(field\_value, \text{salt})$$
+2. **Zero-Topology Leakage Audit:** External underwriters verify that the redacted leaf hash mathematically ascends the RFC-6962 audit path and matches the certified Session Merkle Root with 0% exposure of internal IP subnets.
+3. **Selective Disclosure:** Enterprises hold an internal disclosure secret key allowing selective unmasking in closed court without modifying the underlying Merkle proof.
+4. **Artifacts:** Generates [`outputs/privacy_preserving_proof_certificate.json`](file:///c:/sahityaa/CN%20project/outputs/privacy_preserving_proof_certificate.json).
+
+---
+
+### 2.9 Counterfactual "What-If" Resilience Simulator (`src/simulation/counterfactual_engine.py` — Core USP)
+
+Empowers security architects and red teams to proactively model defense architectures:
+1. **Topological Graph Perturbations:** Simulates hypothetical policy controls (port closures, zero-trust host quarantines, perimeter boundary drops) by pruning corresponding elements from $G_{\text{causal}}$.
+2. **Dynamic Programming Attack Re-Routing:** Evaluates whether an alternate adversarial trajectory exists from entry breach to termination objective.
+3. **Defensive Resilience Index (DRI $\in [0.0, 1.0]$):**
+   $$\text{DRI} = 1.0 - \frac{\text{Severity}(G_{\text{perturbed}})}{\text{Severity}(G_{\text{baseline}})}$$
+   Identifies architectural Single Points of Failure (SPOF) where a single control guarantees 100% attack extinction ($\text{DRI} = 1.0$).
+4. **Artifacts:** Generates [`outputs/counterfactual_simulation_results.json`](file:///c:/sahityaa/CN%20project/outputs/counterfactual_simulation_results.json) and [`outputs/resilience_simulation_report.md`](file:///c:/sahityaa/CN%20project/outputs/resilience_simulation_report.md).
+
+---
 
 ## 3. Data Schema & Contracts
 
