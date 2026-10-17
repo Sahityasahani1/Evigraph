@@ -40,3 +40,4 @@ outputs/*.json
 .idea/
 .DS_Store
 Thumbs.db
+data/knowledge/enterprise-attack.json
