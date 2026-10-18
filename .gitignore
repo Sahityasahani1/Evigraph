@@ -26,6 +26,7 @@ data/processed/*
 # Exceptions: keep sample fixtures
 !data/samples/
 !data/samples/*.csv
+data/samples/Tuesday-WorkingHours.pcap_ISCX.csv
 
 # Model checkpoints and weights
 models/*.pt

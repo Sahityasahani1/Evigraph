@@ -5,6 +5,10 @@
 
 This single guide provides everything you need to consume, query, and integrate network flow data, host graph metrics, and forensic evidence in EviGraph.
 
+> [!IMPORTANT]
+> **Authoritative Specification:** For complete schema definitions, untrusted fields policies, security boundaries, and QueryAPI JSON schemas, refer to the [EviGraph Data Contract v1.1](file:///c:/coding/college/CN%20Project/Evigraph/docs/DATA_CONTRACT.md).
+> For performance benchmarks on 100k flows and 2.8M-row scaling analysis, see [Pipeline Performance Benchmarks](file:///c:/coding/college/CN%20Project/Evigraph/docs/benchmarks.md).
+
 ---
 
 ## 1. Quick Start Cheat Sheet

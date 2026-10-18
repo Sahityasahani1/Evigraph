@@ -408,11 +408,13 @@ class EvidenceStore:
         self,
         evidence_dir: Optional[Path] = None,
         parquet_path: Optional[Path] = None,
-        audit_log_path: Optional[Path] = None
+        audit_log_path: Optional[Path] = None,
+        settings: Optional[Any] = None
     ):
-        self.evidence_dir = settings.resolve_path(evidence_dir or settings.evidence_dir)
-        self.parquet_path = settings.resolve_path(parquet_path or settings.evidence_parquet_path)
-        self.audit_log_path = settings.resolve_path(audit_log_path or settings.audit_log_path)
+        cfg = settings or globals()["settings"]
+        self.evidence_dir = cfg.resolve_path(evidence_dir or cfg.evidence_dir)
+        self.parquet_path = cfg.resolve_path(parquet_path or cfg.evidence_parquet_path)
+        self.audit_log_path = cfg.resolve_path(audit_log_path or cfg.audit_log_path)
         self.logger = AuditLogger(log_path=self.audit_log_path)
 
     def register(self, path: Path | str, source_description: str = "") -> EvidenceRecord:
@@ -423,6 +425,10 @@ class EvidenceStore:
             parquet_path=self.parquet_path,
             audit_log_path=self.audit_log_path
         )
+
+    def register_evidence(self, path: Path | str, source_description: str = "") -> Dict[str, Any]:
+        rec = self.register(path, source_description=source_description)
+        return rec.model_dump() if hasattr(rec, "model_dump") else rec.dict()
 
     def verify(self) -> bool:
         return verify_chain(

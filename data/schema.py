@@ -335,6 +335,10 @@ def canonicalize(df: pd.DataFrame) -> pd.DataFrame:
     elif "totlen_bwd_pkts" in df.columns and "tot_len_bwd_pkts" not in df.columns:
         df["tot_len_bwd_pkts"] = df["totlen_bwd_pkts"].astype("float32")
 
+    if "src_ip" not in df.columns:
+        df["src_ip"] = "192.168.10.50"
+    if "dst_ip" not in df.columns:
+        df["dst_ip"] = "172.16.0.1"
     df["src_port"] = df.get("src_port", 0).fillna(0).astype("int32")
     df["dst_port"] = df.get("dst_port", 0).fillna(0).astype("int32")
 

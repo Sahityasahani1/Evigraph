@@ -237,6 +237,14 @@ def parse_cicids(
 
     df["ts_end"] = df["ts_start"] + pd.to_timedelta(df["duration"], unit="s")
 
+    # Initialize missing network identity columns if absent in CSV
+    if "src_ip" not in df.columns:
+        df["src_ip"] = "192.168.10.50"
+    if "dst_ip" not in df.columns:
+        df["dst_ip"] = "172.16.0.1"
+    if "src_port" not in df.columns:
+        df["src_port"] = 0
+
     # 4. Data Cleaning & Hierarchical Drop Reason Tracking (Mini-Experiment)
     drop_reasons: Dict[str, int] = {
         "repeated_headers": 0,

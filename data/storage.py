@@ -81,15 +81,22 @@ class DuckDBCatalog:
         "evidence_files.parquet",
     }
 
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Optional[Path] = None, processed_dir: Optional[Path] = None):
         self.db_path = settings.resolve_path(db_path or settings.duckdb_catalog_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.processed_dir = (
+            Path(processed_dir)
+            if processed_dir
+            else (self.db_path.parent if db_path else settings.resolve_path(settings.processed_dir))
+        )
         self.conn = duckdb.connect(str(self.db_path))
         self._init_views()
 
     def _init_views(self):
         """Creates unified views over processed Parquet files if they exist."""
-        proc_dir = settings.resolve_path(settings.processed_dir)
+        proc_dir = self.processed_dir
+        if not proc_dir.exists():
+            return
         parquet_files = list(proc_dir.glob("*.parquet"))
         if not parquet_files:
             return
@@ -144,7 +151,6 @@ class DuckDBCatalog:
 
     def query(self, sql: str) -> pd.DataFrame:
         """Executes a SQL query against the catalog and returns a pandas DataFrame."""
-        self.refresh()
         return self.conn.execute(sql).df()
 
     def count_flows(self) -> int:
