@@ -4,7 +4,7 @@ Tests for CLI interface
 
 from typer.testing import CliRunner
 
-from evigraph.data.cli import app
+from data.cli import app
 
 runner = CliRunner()
 

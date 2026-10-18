@@ -33,11 +33,12 @@ dev = [
 ]
 
 [project.scripts]
-evigraph-data = "evigraph.data.cli:app"
+evigraph-data = "data.cli:app"
+data-cli = "data.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["evigraph*"]
+include = ["data*"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

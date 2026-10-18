@@ -24,8 +24,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from evigraph.data.flow_id import assign_flow_ids
-from evigraph.data.schema import PROTO_NAME_MAP, PROTOCOL_MAP, canonicalize, validate
+from data.flow_id import assign_flow_ids
+from data.schema import PROTO_NAME_MAP, PROTOCOL_MAP, canonicalize, validate
 
 # Regular expression to match ASCII and C1 control characters (0-31 and 127-159)
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")

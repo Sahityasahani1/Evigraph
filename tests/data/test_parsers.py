@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from evigraph.data.parsers import get_last_cleaning_report, parse_cicids, parse_zeek_conn
+from data.parsers import get_last_cleaning_report, parse_cicids, parse_zeek_conn
 
 
 def test_parse_cicids_sample():

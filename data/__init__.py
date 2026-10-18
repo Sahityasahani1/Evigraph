@@ -4,8 +4,8 @@ Core package handling telemetry ingestion, normalization, anti-leakage feature e
 evidence integrity, Parquet storage, and DuckDB analytical query services.
 """
 
-from evigraph.data.config import DataPipelineSettings, settings
-from evigraph.data.evidence import (
+from data.config import CANONICAL_FEATURES, FEATURE_COLUMNS, DataPipelineSettings, settings
+from data.evidence import (
     AuditLogger,
     EvidenceRecord,
     EvidenceStore,
@@ -14,15 +14,15 @@ from evigraph.data.evidence import (
     register_evidence,
     verify_chain,
 )
-from evigraph.data.features import FlowFeatureExtractor, HostFeatureExtractor
-from evigraph.data.flow_id import (
+from data.features import FlowFeatureExtractor, HostFeatureExtractor
+from data.flow_id import (
     assign_flow_ids,
     compute_flow_5tuple_str,
     generate_flow_id,
     make_flow_ids,
 )
-from evigraph.data.query import QueryAPI
-from evigraph.data.schema import (
+from data.query import QueryAPI
+from data.schema import (
     CANONICAL_ARROW_SCHEMA,
     CANONICAL_SCHEMA,
     FEAT_COLUMNS,
@@ -31,7 +31,7 @@ from evigraph.data.schema import (
     validate,
     validate_and_canonicalize,
 )
-from evigraph.data.storage import DuckDBCatalog, ParquetStorageEngine
+from data.storage import DuckDBCatalog, ParquetStorageEngine
 
 __all__ = [
     "DataPipelineSettings",
@@ -49,6 +49,8 @@ __all__ = [
     "verify_chain",
     "CANONICAL_SCHEMA",
     "CANONICAL_ARROW_SCHEMA",
+    "CANONICAL_FEATURES",
+    "FEATURE_COLUMNS",
     "MEMBER2_FEATURES",
     "FEAT_COLUMNS",
     "validate",

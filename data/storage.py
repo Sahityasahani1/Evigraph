@@ -11,9 +11,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from evigraph.data.config import settings
-from evigraph.data.evidence import AuditLogger
-from evigraph.data.schema import validate_and_canonicalize
+from data.config import settings
+from data.evidence import AuditLogger
+from data.schema import validate_and_canonicalize
 
 
 class ParquetStorageEngine:

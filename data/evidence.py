@@ -20,7 +20,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, Field
 
-from evigraph.data.config import settings
+from data.config import settings
 
 
 class IntegrityError(Exception):

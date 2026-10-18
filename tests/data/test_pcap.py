@@ -18,8 +18,8 @@ import dpkt
 import pandas as pd
 import pytest
 
-from evigraph.data.evidence import AuditLogger
-from evigraph.data.parsers import (
+from data.evidence import AuditLogger
+from data.parsers import (
     enrich_flows_with_zeek_metadata,
     get_last_pcap_stats,
     parse_pcap,

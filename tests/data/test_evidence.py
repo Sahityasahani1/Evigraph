@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from evigraph.data.evidence import (
+from data.evidence import (
     IntegrityError,
     make_read_only,
     make_writable,

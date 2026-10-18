@@ -10,10 +10,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from evigraph.data.evidence import EvidenceStore
-from evigraph.data.parsers import parse_cicids, parse_pcap, parse_zeek_conn
-from evigraph.data.query import QueryAPI
-from evigraph.data.storage import DuckDBCatalog, ParquetStorageEngine
+from data.evidence import EvidenceStore
+from data.parsers import parse_cicids, parse_pcap, parse_zeek_conn
+from data.query import QueryAPI
+from data.storage import DuckDBCatalog, ParquetStorageEngine
 
 app = typer.Typer(
     name="evigraph-data",
@@ -71,7 +71,7 @@ def ingest(
 @app.command(name="verify")
 def verify():
     """Validates the audit log hash chain and re-hashes every registered evidence file."""
-    from evigraph.data.evidence import IntegrityError, verify_chain
+    from data.evidence import IntegrityError, verify_chain
     try:
         verify_chain()
         console.print("[bold green]PASS: Evidence integrity and audit log hash chain are 100% verified.[/bold green]")

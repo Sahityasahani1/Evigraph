@@ -9,7 +9,7 @@ from typing import Dict, Optional
 import pandas as pd
 import yaml
 
-from evigraph.data.config import settings
+from data.config import settings
 
 # Built-in fallback taxonomy mapping
 FALLBACK_TAXONOMY: Dict[str, str] = {

@@ -13,7 +13,7 @@ from hypothesis import given
 from hypothesis import settings as hyp_settings
 from hypothesis import strategies as st
 
-from evigraph.data.flow_id import (
+from data.flow_id import (
     make_flow_ids,
 )
 

@@ -9,7 +9,8 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 
-from evigraph.data.schema import validate_and_canonicalize
+from data.config import FEATURE_COLUMNS
+from data.schema import validate_and_canonicalize
 
 # Metadata columns to isolate from ML training
 METADATA_COLUMNS = [
@@ -17,17 +18,7 @@ METADATA_COLUMNS = [
     "protocol", "evidence_id", "label", "src_mac", "dst_mac"
 ]
 
-CANONICAL_FEATURE_NAMES = [
-    "flow_duration", "tot_fwd_pkts", "tot_bwd_pkts", "tot_len_fwd_pkts",
-    "tot_len_bwd_pkts", "fwd_pkt_len_max", "fwd_pkt_len_min", "fwd_pkt_len_mean",
-    "fwd_pkt_len_std", "bwd_pkt_len_max", "bwd_pkt_len_min", "bwd_pkt_len_mean",
-    "bwd_pkt_len_std", "flow_bytes_s", "flow_pkts_s", "flow_iat_mean",
-    "flow_iat_std", "flow_iat_max", "flow_iat_min", "fwd_iat_tot", "bwd_iat_tot",
-    "fwd_psh_flags", "bwd_psh_flags", "fwd_urg_flags", "bwd_urg_flags",
-    "fin_flag_cnt", "syn_flag_cnt", "rst_flag_cnt", "psh_flag_cnt", "ack_flag_cnt",
-    "urg_flag_cnt", "down_up_ratio", "pkt_size_avg", "init_fwd_win_byts",
-    "init_bwd_win_byts"
-]
+CANONICAL_FEATURE_NAMES = list(FEATURE_COLUMNS)
 
 
 class FlowFeatureExtractor:

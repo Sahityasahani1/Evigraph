@@ -17,7 +17,7 @@ import json
 import pandas as pd
 import pytest
 
-from evigraph.data.parsers import (
+from data.parsers import (
     get_last_zeek_stats,
     parse_zeek_bundle,
     parse_zeek_conn,

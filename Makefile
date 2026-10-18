@@ -17,9 +17,9 @@ test:
 	$(PYTHON) -m pytest tests/data
 
 lint:
-	$(PYTHON) -m ruff check evigraph tests/data
+	$(PYTHON) -m ruff check data tests/data
 
 format:
-	$(PYTHON) -m ruff format evigraph tests/data
+	$(PYTHON) -m ruff format data tests/data
 
 check: lint test

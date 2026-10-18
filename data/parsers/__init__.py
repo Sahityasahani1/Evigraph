@@ -3,14 +3,14 @@ Telemetry Data Parsers for EviGraph
 Supports CICIDS2017/CICFlowMeter, Zeek conn.log, and raw PCAP captures.
 """
 
-from evigraph.data.parsers.cicids import get_last_cleaning_report, parse_cicids
-from evigraph.data.parsers.pcap import (
+from data.parsers.cicids import get_last_cleaning_report, parse_cicids
+from data.parsers.pcap import (
     enrich_flows_with_zeek_metadata,
     get_last_pcap_stats,
     parse_pcap,
     run_skew_validation,
 )
-from evigraph.data.parsers.zeek import (
+from data.parsers.zeek import (
     get_last_zeek_stats,
     parse_zeek_bundle,
     parse_zeek_conn,

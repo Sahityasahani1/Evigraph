@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from evigraph.data.storage import DuckDBCatalog, ParquetStorageEngine
+from data.storage import DuckDBCatalog, ParquetStorageEngine
 
 
 class QueryAPI:

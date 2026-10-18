@@ -19,16 +19,16 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 
-from evigraph.data.config import settings
-from evigraph.data.flow_id import assign_flow_ids
-from evigraph.data.schema import (
+from data.config import settings
+from data.flow_id import assign_flow_ids
+from data.schema import (
     MEMBER2_FEATURES,
     PROTO_NAME_MAP,
     canonicalize,
     parse_protocol_value,
     validate,
 )
-from evigraph.data.taxonomy import TaxonomyMapper, default_taxonomy
+from data.taxonomy import TaxonomyMapper, default_taxonomy
 
 # Column renaming map for CICFlowMeter verbose headers
 CICIDS_COLUMN_MAP: Dict[str, str] = {

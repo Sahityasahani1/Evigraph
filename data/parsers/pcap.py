@@ -29,10 +29,10 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 
-from evigraph.data.evidence import AuditLogger
-from evigraph.data.flow_id import assign_flow_ids
-from evigraph.data.parsers.zeek import parse_zeek_dns, parse_zeek_http, parse_zeek_ssl
-from evigraph.data.schema import (
+from data.evidence import AuditLogger
+from data.flow_id import assign_flow_ids
+from data.parsers.zeek import parse_zeek_dns, parse_zeek_http, parse_zeek_ssl
+from data.schema import (
     MEMBER2_FEATURES,
     PROTO_NAME_MAP,
     canonicalize,

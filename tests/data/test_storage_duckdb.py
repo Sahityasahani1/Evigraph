@@ -4,8 +4,8 @@ Tests for Parquet Storage & DuckDB Catalog
 
 import pandas as pd
 
-from evigraph.data.query import QueryAPI
-from evigraph.data.storage import DuckDBCatalog, ParquetStorageEngine
+from data.query import QueryAPI
+from data.storage import DuckDBCatalog, ParquetStorageEngine
 
 
 def test_parquet_storage_and_duckdb(tmp_path):
