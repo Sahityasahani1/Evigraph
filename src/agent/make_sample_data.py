@@ -23,7 +23,7 @@ def main() -> None:
             "src_ip": src, "dst_ip": dst, "src_port": sport, "dst_port": dport,
             "protocol": proto, "flow_duration": dur,
             "tot_fwd_pkts": fwd, "tot_bwd_pkts": bwd,
-            "tot_len_fwd_pkts": lenf, "tot_len_bwd_pkts": lenb,
+            "totlen_fwd_pkts": lenf, "totlen_bwd_pkts": lenb,
             "flow_iat_mean": round(dur / max(fwd + bwd - 1, 1), 1),
             "syn_flag_cnt": syn, "rst_flag_cnt": rst, "label": label,
         }

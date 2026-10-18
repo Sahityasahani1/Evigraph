@@ -32,17 +32,22 @@ Rules:
 - flow_ids: one or more flow IDs copied exactly from the data (first_flow_id, last_flow_id, or top_alerts_by_risk). Never invent IDs.
 - technique_id: ONE ATT&CK ID copied from attack_matches for the stage the claim is about, or null.
 - Mention IP addresses only if they appear in the data.
-- If a host was first attacked and later attacked others, include a finding about it.
+- cross_stage_hosts lists hosts that appear in several stages, with a pattern. If a host has pattern target_then_source, include a finding that it was possibly compromised. Call a host a target only if the data lists it as a target, and a source only if the data lists it as a source.
 - Do not repeat a claim."""
 
 SUMMARY_PROMPT = """You write an executive summary of a network security incident for a manager.
 Return JSON only: {"summary": str}
 
 Rules:
-- 2 to 4 plain sentences, one per attack stage in time order, using each stage's OWN start and end times from the timeline. Never use the whole incident's time span for a single stage.
-- Then one sentence on which host matters most and why.
+- One sentence per attack stage, in time order, using each stage's OWN start and end times from the timeline. Never use the whole incident's time span for a single stage.
+- Then one sentence on which host matters most and why. Base it only on the section "Hosts whose role changed across stages": call a host a target only if the report lists it as a target, and a source only if the report lists it as a source. Never invent roles such as "initial target".
 - Use only facts, names and numbers that appear in the report you are given. Add nothing new.
 - Say "possibly" for anything that is an inference."""
+
+MEANING = {
+    "target_then_source": "possible compromise",
+    "source_then_target": "possible callback or reused infrastructure",
+}
 
 
 def _numbers(text: str) -> set[str]:
@@ -89,6 +94,12 @@ def _band(score: float) -> str:
     return "HIGH" if score >= 0.8 else "MEDIUM" if score >= 0.5 else "LOW"
 
 
+def _hosts_text(hosts, distinct):
+    text = ", ".join(hosts)
+    extra = distinct - len(hosts)
+    return f"{text} and {extra} more" if extra > 0 else text
+
+
 def build_report(briefing, accepted, rejected, summary=None, summary_note=None) -> str:
     inc = briefing["incident"]
     stages = inc["stages_in_time_order"]
@@ -106,8 +117,10 @@ def build_report(briefing, accepted, rejected, summary=None, summary_note=None) 
 
     L += ["", "## Timeline (from detector alerts)"]
     for i, s in enumerate(stages, 1):
+        src = _hosts_text(s["sources"], s.get("distinct_sources", len(s["sources"])))
+        dst = _hosts_text(s["targets"], s.get("distinct_targets", len(s["targets"])))
         L.append(f"{i}. {s['first_seen']} to {s['last_seen']}: {s['attack_class']}, "
-                 f"{s['alert_count']} alerts, from {', '.join(s['sources'])} to {', '.join(s['targets'])} "
+                 f"{s['alert_count']} alerts, from {src} to {dst} "
                  f"[{s['first_flow_id']}, {s['last_flow_id']}]")
 
     sources = {h["host_ip"] for h in inc["top_alert_sources"]}
@@ -120,6 +133,15 @@ def build_report(briefing, accepted, rejected, summary=None, summary_note=None) 
                      "lateral movement). Check the timeline above for the order.")
     else:
         L.append("- None: no host appears as both a target and a source of alerts.")
+
+    L += ["", "## Hosts whose role changed across stages (computed from the alerts)"]
+    changed = [h for h in inc.get("cross_stage_hosts", []) if h["pattern"] in MEANING]
+    if changed:
+        for h in changed:
+            roles = ", then ".join(f"{s['role']} in {s['stage']}" for s in h["stages"])
+            L.append(f"- {h['host_ip']}: {roles} ({MEANING[h['pattern']]})")
+    else:
+        L.append("- None: no host changed role between stages.")
 
     L += ["", "## Key hosts"]
     for ip, s in briefing["host_summaries"].items():

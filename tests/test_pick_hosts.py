@@ -19,3 +19,11 @@ def test_pivot_host_comes_first():
 def test_limit_and_no_duplicates():
     hosts = pick_hosts(inc(list("abcdef"), list("ghijkl")), limit=4)
     assert len(hosts) == 4 and len(set(hosts)) == 4
+
+
+
+def test_compromise_candidates_come_first():
+    i = inc(["a", "b"], ["c", "d"])
+    i["cross_stage_hosts"] = [{"host_ip": "x", "pattern": "target_then_source"},
+                              {"host_ip": "y", "pattern": "source_then_target"}]
+    assert pick_hosts(i)[:2] == ["x", "y"]

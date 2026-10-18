@@ -39,6 +39,9 @@ def main():
         print("  ", s)
     print("\nTop sources:", inc["top_alert_sources"][:4])
     print("Top targets:", inc["top_alert_targets"][:4])
+    print("Cross-stage hosts:")
+    for h in inc.get("cross_stage_hosts", []):
+        print("  ", h)
     print("Hosts looked up in full:", list(briefing["host_summaries"]))
     print("\nATT&CK matches per stage:")
     for cls, res in briefing["attack_matches"].items():

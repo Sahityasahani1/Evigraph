@@ -7,13 +7,39 @@ from src.agent.flow_store import FlowStore
 MAX_FLOWS = 25
 
 
+def _pattern(stage_roles: list[dict]) -> str:
+    """Label how a host's role changed across stages (computed by code, not by the model)."""
+    seen_target = seen_source = False
+    target_then_source = source_then_target = False
+    for r in stage_roles:
+        is_source, is_target = "source" in r["role"], "target" in r["role"]
+        if is_source and seen_target:
+            target_then_source = True
+        if is_target and seen_source:
+            source_then_target = True
+        seen_target |= is_target
+        seen_source |= is_source
+    if target_then_source:
+        return "target_then_source"
+    if source_then_target:
+        return "source_then_target"
+    if all(r["role"] == "source" for r in stage_roles):
+        return "source_in_every_stage"
+    if all(r["role"] == "target" for r in stage_roles):
+        return "target_in_every_stage"
+    return "mixed"
+
+
+_PATTERN_PRIORITY = {"target_then_source": 0, "source_then_target": 1}
+
+
 class ForensicTools:
     def __init__(self, store: FlowStore, cases: IncidentCases, kb):
         self.store = store
         self.incidents = {i.incident_id: i for i in cases.incidents}
         self.kb = kb
         self.evidence: set[str] = set()  # every flow_id the agent has been shown
-        self.techniques_seen: set[str] = set()  # every ATT&CK ID the agent has been shown   
+        self.techniques_seen: set[str] = set()  # every ATT&CK ID the agent has been shown
 
     def _note(self, *flow_ids):
         self.evidence.update(flow_ids)
@@ -44,26 +70,50 @@ class ForensicTools:
         stages: dict[str, list] = {}
         for a in alerts:
             stages.setdefault(a.predicted_class, []).append(a)
+
+        def count_by(group, attr):
+            counts: dict[str, int] = {}
+            for a in group:
+                key = getattr(a, attr)
+                counts[key] = counts.get(key, 0) + 1
+            return counts
+
+        def ranked(counts, n=5):
+            return sorted(counts, key=lambda h: (-counts[h], h))[:n]
+
+        ordered = sorted(stages.items(), key=lambda kv: kv[1][0].timestamp)
         timeline = []
-        for cls, group in sorted(stages.items(), key=lambda kv: kv[1][0].timestamp):
+        roles: dict[str, list] = {}
+        for cls, group in ordered:
+            src_c, dst_c = count_by(group, "src_ip"), count_by(group, "dst_ip")
             timeline.append({
                 "attack_class": cls, "alert_count": len(group),
                 "first_seen": group[0].timestamp.isoformat(),
                 "last_seen": group[-1].timestamp.isoformat(),
-                "sources": sorted({a.src_ip for a in group})[:5],
-                "targets": sorted({a.dst_ip for a in group})[:5],
+                "sources": ranked(src_c), "distinct_sources": len(src_c),
+                "targets": ranked(dst_c), "distinct_targets": len(dst_c),
                 "first_flow_id": group[0].flow_id, "last_flow_id": group[-1].flow_id,
             })
             self._note(group[0].flow_id, group[-1].flow_id)
-        src_counts: dict[str, int] = {}
-        dst_counts: dict[str, int] = {}
-        for a in inc.alerts:
-            src_counts[a.src_ip] = src_counts.get(a.src_ip, 0) + 1
-            dst_counts[a.dst_ip] = dst_counts.get(a.dst_ip, 0) + 1
+            for host in set(src_c) | set(dst_c):
+                role = ("source and target" if host in src_c and host in dst_c
+                        else "source" if host in src_c else "target")
+                roles.setdefault(host, []).append(
+                    {"stage": cls, "role": role, "alerts": src_c.get(host, 0) + dst_c.get(host, 0)})
+
+        multi = [h for h, r in roles.items() if len(r) >= 2]
+        patterns = {h: _pattern(roles[h]) for h in multi}
+        multi.sort(key=lambda h: (_PATTERN_PRIORITY.get(patterns[h], 2), -len(roles[h]),
+                                  -sum(x["alerts"] for x in roles[h]), h))
+        cross_stage_hosts = [
+            {"host_ip": h, "pattern": patterns[h], "stages": roles[h]} for h in multi[:10]
+        ]
+
+        src_counts = count_by(inc.alerts, "src_ip")
+        dst_counts = count_by(inc.alerts, "dst_ip")
 
         def top_hosts(counts):
-            ranked = sorted(counts, key=lambda h: (-counts[h], h))[:5]
-            return [{"host_ip": h, "alerts": counts[h]} for h in ranked]
+            return [{"host_ip": h, "alerts": counts[h]} for h in ranked(counts)]
         top = sorted(inc.alerts, key=lambda a: -a.risk_score)[:5]
         self._note(*[a.flow_id for a in top])
         return {
@@ -74,6 +124,7 @@ class ForensicTools:
             "top_alert_sources": top_hosts(src_counts),
             "top_alert_targets": top_hosts(dst_counts),
             "stages_in_time_order": timeline,
+            "cross_stage_hosts": cross_stage_hosts,
             "top_alerts_by_risk": [
                 {"alert_id": a.alert_id, "flow_id": a.flow_id, "timestamp": a.timestamp.isoformat(),
                  "src_ip": a.src_ip, "dst_ip": a.dst_ip, "dst_port": a.dst_port,
@@ -118,4 +169,5 @@ class ForensicTools:
         """
         matches = self.kb.search(query, 5)
         self.techniques_seen.update(m["id"] for m in matches)
-        return {"matches": matches, "note": "Only cite technique IDs that appear in this list."}
+        return {"matches": matches,
+                "note": "Only cite technique IDs that appear in this list."}

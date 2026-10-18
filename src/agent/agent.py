@@ -82,10 +82,17 @@ def _stage_query(attack_class: str) -> str:
     return f"{attack_class} network attack"
 
 def pick_hosts(inc: dict, limit: int = 4) -> list[str]:
-    """Hosts to look up in full: pivot hosts first, then alternate busiest target / busiest source."""
+    """Hosts to look up in full, most informative first:
+    1. hosts that were a target and later a source (possible compromise),
+    2. hosts that were a source and later a target (callback or reuse),
+    3. pivot hosts (a top source and also a top target of the whole incident),
+    4. then alternate busiest target / busiest source."""
+    cross = inc.get("cross_stage_hosts", [])
+    chosen = [h["host_ip"] for h in cross if h.get("pattern") == "target_then_source"][:2]
+    chosen += [h["host_ip"] for h in cross if h.get("pattern") == "source_then_target"][:1]
     sources = [h["host_ip"] for h in inc["top_alert_sources"]]
     targets = [h["host_ip"] for h in inc["top_alert_targets"]]
-    chosen = [h for h in sources if h in targets]
+    chosen += [h for h in sources if h in targets and h not in chosen]
     for pair in zip_longest(targets, sources):
         for h in pair:
             if h and h not in chosen:

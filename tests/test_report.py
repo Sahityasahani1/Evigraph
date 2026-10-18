@@ -122,3 +122,9 @@ def test_unparseable_summary_is_withheld():
 def test_finding_with_invented_number_is_rejected():
     r = generate_report(make_agent(one("203.0.113.50 sent 9999 packets.")), "INC-001")
     assert not r["accepted"] and "numbers" in r["rejected"][0]["problems"][0]
+
+
+
+def test_report_lists_role_changes_from_the_alerts():
+    r = generate_report(make_agent(NO_FINDINGS), "INC-001")
+    assert "10.0.0.5: target in" in r["report"] and "then source in" in r["report"]

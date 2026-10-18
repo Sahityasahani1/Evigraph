@@ -60,8 +60,8 @@ class FlowStore:
             "top_destination_ports": {
                 str(p): int(c) for p, c in out["dst_port"].value_counts().head(5).items()
             },
-            "bytes_sent": float(out["tot_len_fwd_pkts"].sum() + inn["tot_len_bwd_pkts"].sum()),
-            "bytes_received": float(out["tot_len_bwd_pkts"].sum() + inn["tot_len_fwd_pkts"].sum()),
+            "bytes_sent": float(out["totlen_fwd_pkts"].sum() + inn["totlen_bwd_pkts"].sum()),
+            "bytes_received": float(out["totlen_bwd_pkts"].sum() + inn["totlen_fwd_pkts"].sum()),
             "syn_flags_as_source": int(out["syn_flag_cnt"].sum()),
             "rst_flags_as_source": int(out["rst_flag_cnt"].sum()),
         }

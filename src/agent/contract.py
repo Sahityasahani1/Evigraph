@@ -36,8 +36,8 @@ class IncidentCases(BaseModel):
 # Flow table columns (from the team's architecture document)
 FLOW_COLUMNS = [
     "flow_id", "evidence_id", "timestamp", "src_ip", "dst_ip", "src_port", "dst_port",
-    "protocol", "flow_duration", "tot_fwd_pkts", "tot_bwd_pkts", "tot_len_fwd_pkts",
-    "tot_len_bwd_pkts", "flow_iat_mean", "syn_flag_cnt", "rst_flag_cnt", "label",
+    "protocol", "flow_duration", "tot_fwd_pkts", "tot_bwd_pkts", "totlen_fwd_pkts",
+    "totlen_bwd_pkts", "flow_iat_mean", "syn_flag_cnt", "rst_flag_cnt", "label",
 ]
 
 
