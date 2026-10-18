@@ -1,0 +1,113 @@
+{
+ "INC-E1": {
+  "title": "SSH brute force",
+  "stage_order": [
+   "SSH-Patator"
+  ],
+  "attack_families": {
+   "SSH-Patator": [
+    "T1110"
+   ]
+  },
+  "pivot_hosts": [],
+  "key_hosts": [
+   "203.0.113.10",
+   "10.0.0.5"
+  ]
+ },
+ "INC-E2": {
+  "title": "Brute force then scan (pivot)",
+  "stage_order": [
+   "SSH-Patator",
+   "PortScan"
+  ],
+  "attack_families": {
+   "SSH-Patator": [
+    "T1110"
+   ],
+   "PortScan": [
+    "T1046",
+    "T1595"
+   ]
+  },
+  "pivot_hosts": [
+   "10.0.0.6"
+  ],
+  "key_hosts": [
+   "203.0.113.20",
+   "10.0.0.6"
+  ]
+ },
+ "INC-E3": {
+  "title": "DDoS on web server",
+  "stage_order": [
+   "DDoS"
+  ],
+  "attack_families": {
+   "DDoS": [
+    "T1498",
+    "T1499"
+   ]
+  },
+  "pivot_hosts": [],
+  "key_hosts": [
+   "10.0.0.9"
+  ]
+ },
+ "INC-E4": {
+  "title": "Data exfiltration",
+  "stage_order": [
+   "Infiltration"
+  ],
+  "attack_families": {
+   "Infiltration": [
+    "T1048",
+    "T1041",
+    "T1567",
+    "T1030"
+   ]
+  },
+  "pivot_hosts": [],
+  "key_hosts": [
+   "10.0.0.31",
+   "198.51.100.77"
+  ]
+ },
+ "INC-E5": {
+  "title": "Botnet beaconing",
+  "stage_order": [
+   "Bot"
+  ],
+  "attack_families": {
+   "Bot": [
+    "T1071",
+    "T1095",
+    "T1571",
+    "T1573",
+    "T1090",
+    "T1102"
+   ]
+  },
+  "pivot_hosts": [],
+  "key_hosts": [
+   "10.0.0.44",
+   "198.51.100.99"
+  ]
+ },
+ "INC-E6": {
+  "title": "SQL injection",
+  "stage_order": [
+   "Web Attack - Sql Injection"
+  ],
+  "attack_families": {
+   "Web Attack - Sql Injection": [
+    "T1190"
+   ]
+  },
+  "pivot_hosts": [],
+  "key_hosts": [
+   "203.0.113.30",
+   "10.0.0.9"
+  ]
+ }
+}

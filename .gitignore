@@ -43,3 +43,4 @@ Thumbs.db
 data/knowledge/enterprise-attack.json
 data/knowledge/attack_techniques.json
 data/knowledge/attack_index.npz
+data/raw/

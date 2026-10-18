@@ -50,6 +50,9 @@ def llm_runs(agent, incident_id, runs):
             "parse_error": r["parse_error"],
             "rejections": [p for x in r["rejected"] for p in x["problems"]],
             "seconds": time.time() - t0,
+            "summary_text": r["summary"],
+            "accepted_findings": r["accepted"],
+            "rejected_findings": r["rejected"],
         })
     return out
 
@@ -94,6 +97,20 @@ def render(rows, args) -> str:
     return "\n".join(L)
 
 
+def _encode(o):
+    """Let json.dumps handle pydantic objects (Finding etc.)."""
+    return o.model_dump() if hasattr(o, "model_dump") else str(o)
+
+
+def save_json(rows):
+    Path("reports").mkdir(exist_ok=True)
+    Path("reports/evaluation.json").write_text(
+        json.dumps([{"incident": i, "title": t, "deterministic": d, "runs": r} for i, t, d, r in rows],
+                   indent=1, default=_encode),
+        encoding="utf-8",
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=3)
@@ -114,14 +131,12 @@ def main():
         d = deterministic(agent, iid, t)
         runs = [] if args.no_llm else llm_runs(agent, iid, args.runs)
         rows.append((iid, t["title"], d, runs))
+        save_json(rows)  # saved after every scenario, so a late crash loses nothing
         print(f"done {iid} {t['title']}", flush=True)
 
     text = render(rows, args)
     Path("reports").mkdir(exist_ok=True)
     Path("reports/evaluation.md").write_text(text, encoding="utf-8")
-    Path("reports/evaluation.json").write_text(
-        json.dumps([{"incident": i, "title": t, "deterministic": d, "runs": r} for i, t, d, r in rows],
-                   indent=1), encoding="utf-8")
     print("\n" + text)
 
 
