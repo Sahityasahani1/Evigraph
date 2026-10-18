@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from data.storage import DuckDBCatalog, ParquetStorageEngine
+from data.storage import DuckDBCatalog
 
 
 class QueryAPI:
@@ -62,6 +62,61 @@ class QueryAPI:
         """Executes an arbitrary SQL query against the DuckDB catalog."""
         return self.catalog.query(sql_query)
 
+    def get_features(
+        self,
+        flow_ids: Optional[list[str]] = None,
+        df: Optional[pd.DataFrame] = None,
+        limit: Optional[int] = None,
+        unprefixed: bool = True
+    ) -> pd.DataFrame:
+        """
+        Retrieves flow feature matrix reading FEATURE_COLUMNS only.
+        Guarantees zero metadata or host feature leakage.
+        """
+        import numpy as np
+
+        from data.config import FEATURE_COLUMNS
+
+        if df is not None:
+            out = pd.DataFrame(index=df.index)
+            for col in FEATURE_COLUMNS:
+                feat_col = f"feat_{col}"
+                target_col = col if unprefixed else feat_col
+                if feat_col in df.columns:
+                    out[target_col] = df[feat_col].astype("float32")
+                elif col in df.columns:
+                    out[target_col] = df[col].astype("float32")
+                else:
+                    out[target_col] = np.float32(0.0)
+
+            out = out.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+            return out
+
+        feat_cols = [f"feat_{c}" for c in FEATURE_COLUMNS]
+        cols_sql = ", ".join(feat_cols)
+        sql = f"SELECT {cols_sql} FROM flows"
+
+        if flow_ids:
+            quote = "'"
+            double_quote = "''"
+            clean_ids = [f"'{fid.replace(quote, double_quote)}'" for fid in flow_ids]
+            sql += f" WHERE flow_id IN ({', '.join(clean_ids)})"
+
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+
+        res = self.catalog.query(sql)
+        if res.empty:
+            cols = list(FEATURE_COLUMNS) if unprefixed else feat_cols
+            return pd.DataFrame(columns=cols, dtype="float32")
+
+        if unprefixed:
+            rename_map = {f"feat_{c}": c for c in FEATURE_COLUMNS}
+            res = res.rename(columns=rename_map)
+
+        res = res.astype("float32").replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        return res
+
     def export_splits_for_member2(
         self,
         train_ratio: float = 0.60,
@@ -90,10 +145,13 @@ class QueryAPI:
         val_df = pd.concat(val_dfs, ignore_index=True)
         test_df = pd.concat(test_dfs, ignore_index=True)
 
-        storage = ParquetStorageEngine()
-        p_train = storage.write_parquet(train_df, f"{split_prefix}_train_flows.parquet")
-        p_val = storage.write_parquet(val_df, f"{split_prefix}_val_flows.parquet")
-        p_test = storage.write_parquet(test_df, f"{split_prefix}_test_flows.parquet")
+        from data.adapters import export_member2
+        from data.config import settings
+
+        proc_dir = settings.resolve_path(settings.processed_dir)
+        p_train = export_member2(proc_dir / f"{split_prefix}_train_flows.parquet", train_df, split="train")
+        p_val = export_member2(proc_dir / f"{split_prefix}_val_flows.parquet", val_df, split="val")
+        p_test = export_member2(proc_dir / f"{split_prefix}_test_flows.parquet", test_df, split="test")
 
         return {
             "train": p_train,

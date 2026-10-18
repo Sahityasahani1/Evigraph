@@ -4,6 +4,7 @@ Core package handling telemetry ingestion, normalization, anti-leakage feature e
 evidence integrity, Parquet storage, and DuckDB analytical query services.
 """
 
+from data.adapters import export_member2
 from data.config import CANONICAL_FEATURES, FEATURE_COLUMNS, DataPipelineSettings, settings
 from data.evidence import (
     AuditLogger,
@@ -61,4 +62,5 @@ __all__ = [
     "ParquetStorageEngine",
     "DuckDBCatalog",
     "QueryAPI",
+    "export_member2",
 ]
