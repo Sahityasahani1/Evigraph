@@ -16,6 +16,8 @@ data/processed/
 *.pcapng
 *.parquet
 *.csv
+*.zip
+*.tar.gz
 
 # Exceptions: keep sample fixtures
 !data/samples/

@@ -21,7 +21,7 @@ This document indexes all training, validation, testing, and benchmark telemetry
 | :--- | :--- | :--- | :--- | :--- |
 | `APT-C2-Exfiltration.parquet` | `BENIGN, C2-Heartbeat, Lateral-SMB-Relay, HTTPS-Exfiltration` | 100,000 | 12.9 MB | `f7972b5f6188d2f4...` |
 | `CIC-DDoS2019-Reflection.parquet` | `BENIGN, DNS-Amplification, NTP-Reflection, SYN-Flood` | 120,000 | 14.104 MB | `624b59caa31251e2...` |
-| `UNSW-NB15-Enterprise.parquet` | `BENIGN, Reconnaissance, Fuzzers, Backdoor` | 120,000 | 15.231 MB | `eb1468d1fa70d018...` |
+| `UNSW-NB15-Enterprise.parquet` | `BENIGN, Reconnaissance, Fuzzers, Backdoor, Exploits` | 120,000 | 15.231 MB | `eb1468d1fa70d018...` |
 
 ## 3. Raw Enterprise Captures (`data/raw/`)
 
