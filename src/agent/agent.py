@@ -58,9 +58,28 @@ CLASS_DESCRIPTIONS = {
     }.items()
 }
 
+EXTRA_DESCRIPTIONS = {
+    "DNS-Amplification": "DNS amplification reflection flood of large DNS responses sent to a victim",
+    "NTP-Reflection": "NTP reflection amplification flood sent to a victim",
+    "SYN-Flood": "TCP SYN flood denial of service against a server",
+    "Backdoor": "backdoor giving persistent remote access to a compromised host",
+    "Exploits": "exploiting a vulnerability in a network service for remote code execution",
+    "Fuzzers": "fuzzing a network service with malformed or random input to discover exploitable vulnerabilities",
+    "Reconnaissance": "port scanning and probing many hosts and ports to discover open network services",
+    "C2-Heartbeat": "infected host repeatedly beaconing to a command and control server at regular intervals",
+    "HTTPS-Exfiltration": "large upload of stolen data to an external server over HTTPS, exfiltration over web services",
+    "Lateral-SMB-Relay": "lateral movement between internal hosts over SMB, relaying captured credentials, SMB relay",
+}
+
 
 def _stage_query(attack_class: str) -> str:
-    return CLASS_DESCRIPTIONS.get(_norm(attack_class), f"{attack_class} network attack")
+    key = _norm(attack_class)
+    if key in CLASS_DESCRIPTIONS:
+        return CLASS_DESCRIPTIONS[key]
+    for name, text in EXTRA_DESCRIPTIONS.items():
+        if _norm(name) == key:
+            return text
+    return f"{attack_class} network attack"
 
 def pick_hosts(inc: dict, limit: int = 4) -> list[str]:
     """Hosts to look up in full: pivot hosts first, then alternate busiest target / busiest source."""

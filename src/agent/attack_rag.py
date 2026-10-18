@@ -20,10 +20,13 @@ HINTS = {
     "T1046": "port scan, network scan, nmap, probing many ports and hosts for open services",
     "T1595": "scanning, probing, reconnaissance of target addresses and open ports",
     "T1595.001": "IP block scan, ping sweep of an address range",
-    "T1595.002": "vulnerability scan of exposed services",
+    "T1595.002": "vulnerability scan of exposed services, fuzzing a service with malformed or random input to find vulnerabilities",
     "T1190": "SQL injection, web attack against a public-facing web server, exploiting a web application vulnerability, malicious HTTP requests",
     "T1071": "botnet command and control, infected host beaconing to a control server at regular intervals over web protocols",
     "T1071.001": "botnet beaconing over HTTP or HTTPS web traffic to a command and control server",
+    "T1041": "exfiltration of stolen data over the existing command and control channel, large upload to an external server",
+    "T1567": "exfiltration of stolen data by uploading it to an external web service or server over HTTPS",
+    "T1557.001": "SMB relay attack relaying captured authentication to other internal hosts over SMB",
 }
 
 
