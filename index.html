@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>EviGraph · 3D Network Forensic Console</title>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <header class="p" id="hd">
+    <b>⬡ EviGraph</b>
+    <select id="incSel"></select>
+    <span class="mu" id="mode"></span>
+    <span class="grow"></span>
+    <span id="clk" class="mu"></span>
+    <button id="bBenign" class="on">Benign</button>
+    <button id="bRotate" class="on">Auto-rotate</button>
+    <button id="bPackets" class="on">Packets</button>
+  </header>
+  <aside class="p" id="left"></aside>
+  <aside class="p" id="right">
+    <div><button id="tabE" class="on">Evidence</button> <button id="tabP">Verified report</button></div>
+    <div id="detail"></div>
+  </aside>
+  <footer class="p" id="bottom">
+    <div class="row"><button id="play">▶ Replay</button><span class="mu">Drag = orbit · wheel = zoom · click nodes/edges</span></div>
+    <div id="tl"></div>
+    <input type="range" id="slider" min="0" max="30" step="0.01" value="0" />
+  </footer>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
