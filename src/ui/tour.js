@@ -9,8 +9,7 @@ const STEPS = [
 export function startTour() {
   if (document.getElementById('tour')) return;
   const o = document.createElement('div'); o.id = 'tour';
-  o.innerHTML = '<div class="spot"></div><div class="tcard"></div>'; document.body.append(o);
-  let i = 0;
+  o.innerHTML = '<div class="spot"></div><div class="tcard"></div>';  let i = 0;
   const done = () => { localStorage.setItem('evigraph_toured', '1'); o.remove(); };
   const draw = () => {
     const s = STEPS[i], spot = o.querySelector('.spot'), card = o.querySelector('.tcard');
