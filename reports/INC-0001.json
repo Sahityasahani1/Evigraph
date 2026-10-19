@@ -1,0 +1,158 @@
+{
+ "incident_id": "INC-0001",
+ "error": null,
+ "severity_score": 0.8994,
+ "start": "2026-11-02T09:05:04.094161",
+ "end": "2026-11-02T10:23:38.562901",
+ "alert_count": 2200,
+ "host_count": 73,
+ "report_markdown": "# Incident report: INC-0001\n\n## Executive summary\n- Withheld: model unavailable (Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download)\n\n## Overview\n- Severity: 0.8994 (HIGH; bands: >=0.8 high, >=0.5 medium)\n- Time span: 2026-11-02T09:05:04.094161 to 2026-11-02T10:23:38.562901\n- Alerts: 2200 across 73 hosts\n\n## Timeline (from detector alerts)\n1. 2026-11-02T09:05:04.094161 to 2026-11-02T09:11:39.453799: Reconnaissance, 2100 alerts, from 198.51.100.3, 198.51.100.2, 198.51.100.4 to 10.0.1.28, 10.0.1.17, 10.0.1.16, 10.0.1.21, 10.0.1.73 and 65 more [flw_unsw_recon_04225, flw_unsw_recon_09901]\n2. 2026-11-02T10:10:22.296697 to 2026-11-02T10:23:38.562901: Backdoor, 100 alerts, from 10.0.1.12 to 198.51.100.12 [flw_unsw_back_02540, flw_unsw_back_08884]\n\n## Possible pivot hosts\n- None: no host appears as both a target and a source of alerts.\n\n## Hosts whose role changed across stages (computed from the alerts)\n- 10.0.1.12: target in Reconnaissance, then source in Backdoor (possible compromise)\n\n## Key hosts\n- 10.0.1.12: source of 440 flows (4 destination hosts, 4 destination ports), destination of 25 flows\n- 198.51.100.12: source of 53 flows (3 destination hosts, 4 destination ports), destination of 519 flows\n- 198.51.100.3: source of 800 flows (72 destination hosts, 9 destination ports), destination of 0 flows\n- 10.0.1.28: source of 0 flows (0 destination hosts, 0 destination ports), destination of 41 flows\n\n## ATT&CK mapping (best search match per stage)\n- Reconnaissance: T1046 Network Service Discovery (tactic: discovery); other candidates: T1595, T1595.002, T1557.001, T1210\n- Backdoor: T1071 Application Layer Protocol (tactic: command-and-control); other candidates: T1595.002, T1190, T1071.001, T1557.001\n\n## Analyst findings (each verified against retrieved evidence)\n- No model finding passed verification.\n\n## Verification summary\n- Findings proposed: 0, accepted: 0, rejected: 0",
+ "summary": null,
+ "summary_withheld_reason": "model unavailable (Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download)",
+ "timeline": [
+  {
+   "attack_class": "Reconnaissance",
+   "alert_count": 2100,
+   "first_seen": "2026-11-02T09:05:04.094161",
+   "last_seen": "2026-11-02T09:11:39.453799",
+   "sources": [
+    "198.51.100.3",
+    "198.51.100.2",
+    "198.51.100.4"
+   ],
+   "distinct_sources": 3,
+   "targets": [
+    "10.0.1.28",
+    "10.0.1.17",
+    "10.0.1.16",
+    "10.0.1.21",
+    "10.0.1.73"
+   ],
+   "distinct_targets": 70,
+   "first_flow_id": "flw_unsw_recon_04225",
+   "last_flow_id": "flw_unsw_recon_09901"
+  },
+  {
+   "attack_class": "Backdoor",
+   "alert_count": 100,
+   "first_seen": "2026-11-02T10:10:22.296697",
+   "last_seen": "2026-11-02T10:23:38.562901",
+   "sources": [
+    "10.0.1.12"
+   ],
+   "distinct_sources": 1,
+   "targets": [
+    "198.51.100.12"
+   ],
+   "distinct_targets": 1,
+   "first_flow_id": "flw_unsw_back_02540",
+   "last_flow_id": "flw_unsw_back_08884"
+  }
+ ],
+ "cross_stage_hosts": [
+  {
+   "host_ip": "10.0.1.12",
+   "pattern": "target_then_source",
+   "stages": [
+    {
+     "stage": "Reconnaissance",
+     "role": "target",
+     "alerts": 25
+    },
+    {
+     "stage": "Backdoor",
+     "role": "source",
+     "alerts": 100
+    }
+   ]
+  }
+ ],
+ "attack_matches": {
+  "Reconnaissance": [
+   {
+    "id": "T1046",
+    "name": "Network Service Discovery",
+    "tactics": [
+     "discovery"
+    ],
+    "score": 0.75
+   },
+   {
+    "id": "T1595",
+    "name": "Active Scanning",
+    "tactics": [
+     "reconnaissance"
+    ],
+    "score": 0.7
+   },
+   {
+    "id": "T1595.002",
+    "name": "Vulnerability Scanning",
+    "tactics": [
+     "reconnaissance"
+    ],
+    "score": 0.7
+   },
+   {
+    "id": "T1557.001",
+    "name": "LLMNR/NBT-NS Poisoning and SMB Relay",
+    "tactics": [
+     "credential-access"
+    ],
+    "score": 0.7
+   },
+   {
+    "id": "T1210",
+    "name": "Exploitation of Remote Services",
+    "tactics": [
+     "lateral-movement"
+    ],
+    "score": 0.7
+   }
+  ],
+  "Backdoor": [
+   {
+    "id": "T1071",
+    "name": "Application Layer Protocol",
+    "tactics": [
+     "command-and-control"
+    ],
+    "score": 0.7
+   },
+   {
+    "id": "T1595.002",
+    "name": "Vulnerability Scanning",
+    "tactics": [
+     "reconnaissance"
+    ],
+    "score": 0.7
+   },
+   {
+    "id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactics": [
+     "initial-access"
+    ],
+    "score": 0.7
+   },
+   {
+    "id": "T1071.001",
+    "name": "Web Protocols",
+    "tactics": [
+     "command-and-control"
+    ],
+    "score": 0.7
+   },
+   {
+    "id": "T1557.001",
+    "name": "LLMNR/NBT-NS Poisoning and SMB Relay",
+    "tactics": [
+     "credential-access"
+    ],
+    "score": 0.7
+   }
+  ]
+ },
+ "findings": [],
+ "rejected_findings": []
+}

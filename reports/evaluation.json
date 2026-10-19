@@ -1,0 +1,706 @@
+[
+ {
+  "incident": "INC-E1",
+  "title": "SSH brute force",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": [
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 71.19180130958557,
+    "summary_text": "A medium-severity network security incident occurred from 2026-02-01T09:05:00 to 2026-02-01T09:06:56, involving 30 alerts across 2 hosts. The incident started with SSH-Patator attacking host 10.0.0.5, which was the source of 30 flows and the destination of 0 flows. The most critical host is 10.0.0.5, as it was the primary target of the attack, with all incoming flows destined for this host.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a host, 10.0.0.5, being attacked by SSH-Patator.",
+      "flow_ids": [
+       "flw_000302",
+       "flw_000328",
+       "flw_000327",
+       "flw_000313",
+       "flw_000318",
+       "flw_000330"
+      ],
+      "technique_id": "T1021.004"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 25.638806104660034,
+    "summary_text": "A medium-severity network security incident occurred from 2026-02-01T09:05:00 to 2026-02-01T09:06:56, involving 30 alerts across 2 hosts. The incident started with a password guessing attack on host 10.0.0.5, which was the source of 30 flows and the destination of 0 flows. The host 203.0.113.10 was the source of 30 flows and the destination of 0 flows. The most critical host is 10.0.0.5, as it was the target of the password guessing attack and had no incoming flows.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a password guessing attack on the host 10.0.0.5.",
+      "flow_ids": [
+       "flw_000302",
+       "flw_000328",
+       "flw_000327",
+       "flw_000313",
+       "flw_000318"
+      ],
+      "technique_id": "T1110.001"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 23.021064519882202,
+    "summary_text": "A medium-severity network security incident occurred from 2026-02-01T09:05:00 to 2026-02-01T09:06:56, involving 30 alerts across 2 hosts. The incident started with a password guessing attack on host 10.0.0.5, which was the source of 30 flows and the destination of 0 flows. The host 203.0.113.10 was the source of 30 flows and the destination of 0 flows. The most critical host is 10.0.0.5, as it was the target of the password guessing attack and had no incoming flows.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a password guessing attack on the host 10.0.0.5.",
+      "flow_ids": [
+       "flw_000302",
+       "flw_000328",
+       "flw_000327",
+       "flw_000313",
+       "flw_000318"
+      ],
+      "technique_id": "T1110.001"
+     }
+    ],
+    "rejected_findings": []
+   }
+  ]
+ },
+ {
+  "incident": "INC-E2",
+  "title": "Brute force then scan (pivot)",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": [
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 73.23011589050293,
+    "summary_text": "A high-severity SSH-Patator brute force attack occurred on 10.0.0.6 from 203.0.113.20 from 2026-02-01T09:10:00 to 2026-02-01T09:10:57, followed by a PortScan attack on multiple hosts from 2026-02-01T09:12:00 to 2026-02-01T09:12:19.500000. The host 10.0.0.6 matters most as it was both a target and a source of alerts, indicating possible compromise and lateral movement.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a brute force attack on the SSH server at 10.0.0.6.",
+      "flow_ids": [
+       "flw_000331",
+       "flw_000350"
+      ],
+      "technique_id": "T1110.001"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 26.224533796310425,
+    "summary_text": "A high-severity SSH brute force attack (T1110.001) occurred on 10.0.0.6 from 203.0.113.20 from 2026-02-01T09:10:00 to 2026-02-01T09:10:57, followed by a port scan (T1046) on multiple hosts, including 10.0.0.6, 10.0.0.114, and 10.0.0.115, from 2026-02-01T09:12:00 to 2026-02-01T09:12:19.500000. The host 10.0.0.6 matters most as it was both a target and a source of alerts, indicating possible compromise and lateral movement.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a brute force attack on the SSH server at 10.0.0.6.",
+      "flow_ids": [
+       "flw_000331",
+       "flw_000350"
+      ],
+      "technique_id": "T1110.001"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 27.135946035385132,
+    "summary_text": "A high-severity SSH brute force attack (T1110.001) occurred on 10.0.0.6 from 203.0.113.20 from 2026-02-01T09:10:00 to 2026-02-01T09:10:57, followed by a port scan (T1046) on multiple hosts, including 10.0.0.6, 10.0.0.114, and 10.0.0.115, from 2026-02-01T09:12:00 to 2026-02-01T09:12:19.500000. The host 10.0.0.6 matters most as it was both a target and a source of alerts, indicating possible compromise and lateral movement.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a brute force attack on the SSH server at 10.0.0.6.",
+      "flow_ids": [
+       "flw_000331",
+       "flw_000350"
+      ],
+      "technique_id": "T1110.001"
+     }
+    ],
+    "rejected_findings": []
+   }
+  ]
+ },
+ {
+  "incident": "INC-E3",
+  "title": "DDoS on web server",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": [
+   {
+    "proposed": 5,
+    "accepted": 5,
+    "summary_ok": false,
+    "summary_note": "failed verification: contains numbers not in the data: ['11.8']",
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 191.54699873924255,
+    "summary_text": null,
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a Direct Network Flood (T1498.001) attack on the host 10.0.0.9.",
+      "flow_ids": [
+       "flw_000391",
+       "flw_000450"
+      ],
+      "technique_id": "T1498.001"
+     },
+     {
+      "claim": "The attack was followed by a Network Denial of Service (T1498) attack on the same host.",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": "T1498"
+     },
+     {
+      "claim": "The attackers used multiple IP addresses (198.51.100.11, 198.51.100.12, 198.51.100.13, 198.51.100.14, 198.51.100.15) to launch the attack.",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": null
+     },
+     {
+      "claim": "The attack was a Distributed Denial of Service (DDoS) attack, as indicated by the attack class.",
+      "flow_ids": [
+       "flw_000391",
+       "flw_000450"
+      ],
+      "technique_id": "T1498.001"
+     },
+     {
+      "claim": "The attackers used a risk score of 0.99 for the attack.",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": "T1498.001"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 6,
+    "accepted": 6,
+    "summary_ok": false,
+    "summary_note": "failed verification: contains numbers not in the data: ['11.8']",
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 168.5003159046173,
+    "summary_text": null,
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a Direct Network Flood (T1498.001) attack on the host 10.0.0.9.",
+      "flow_ids": [
+       "flw_000391",
+       "flw_000450"
+      ],
+      "technique_id": "T1498.001"
+     },
+     {
+      "claim": "The attack was followed by a Network Denial of Service (T1498) attack on the same host.",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": "T1498"
+     },
+     {
+      "claim": "The attackers used multiple IP addresses (198.51.100.11, 198.51.100.12, 198.51.100.13, 198.51.100.14, 198.51.100.15) to launch the attack.",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": null
+     },
+     {
+      "claim": "The attack was a Distributed Denial of Service (DDoS) attack, as indicated by the attack class.",
+      "flow_ids": [
+       "flw_000391",
+       "flw_000450"
+      ],
+      "technique_id": "T1498.001"
+     },
+     {
+      "claim": "The attackers used a Service Exhaustion Flood (T1499.002) technique.",
+      "flow_ids": [
+       "flw_000406",
+       "flw_000409"
+      ],
+      "technique_id": "T1499.002"
+     },
+     {
+      "claim": "The attack was launched from multiple hosts (198.51.100.11, 198.51.100.12, 198.51.100.13, 198.51.100.14, 198.51.100.15) and targeted a single host (10.0.0.9).",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": null
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 6,
+    "accepted": 6,
+    "summary_ok": false,
+    "summary_note": "failed verification: contains numbers not in the data: ['11.8']",
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 156.12702107429504,
+    "summary_text": null,
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a Direct Network Flood (T1498.001) attack on the host 10.0.0.9.",
+      "flow_ids": [
+       "flw_000391",
+       "flw_000450"
+      ],
+      "technique_id": "T1498.001"
+     },
+     {
+      "claim": "The attack was followed by a Network Denial of Service (T1498) attack on the same host.",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": "T1498"
+     },
+     {
+      "claim": "The attackers used multiple IP addresses (198.51.100.11, 198.51.100.12, 198.51.100.13, 198.51.100.14, 198.51.100.15) to launch the attack.",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": null
+     },
+     {
+      "claim": "The attack was a Distributed Denial of Service (DDoS) attack, as indicated by the attack class.",
+      "flow_ids": [
+       "flw_000391",
+       "flw_000450"
+      ],
+      "technique_id": "T1498.001"
+     },
+     {
+      "claim": "The attackers used a Service Exhaustion Flood (T1499.002) technique.",
+      "flow_ids": [
+       "flw_000406",
+       "flw_000409"
+      ],
+      "technique_id": "T1499.002"
+     },
+     {
+      "claim": "The attack was launched from multiple hosts (198.51.100.11, 198.51.100.12, 198.51.100.13, 198.51.100.14, 198.51.100.15) and targeted a single host (10.0.0.9).",
+      "flow_ids": [
+       "flw_000393",
+       "flw_000415",
+       "flw_000406",
+       "flw_000409",
+       "flw_000429"
+      ],
+      "technique_id": null
+     }
+    ],
+    "rejected_findings": []
+   }
+  ]
+ },
+ {
+  "incident": "INC-E4",
+  "title": "Data exfiltration",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": [
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 71.87746047973633,
+    "summary_text": "A medium-severity network security incident occurred from 2026-02-01T09:30:00 to 2026-02-01T09:31:00, involving 4 alerts across 2 hosts. The incident started with host 10.0.0.31, which was first attacked at 2026-02-01T09:05:13.719114, and was later targeted by host 198.51.100.77. The most critical host is 198.51.100.77, as it was the source of 4 flows and the destination of 0 flows, indicating a potential exfiltration attempt.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a host, 10.0.0.31, which was first attacked at 2026-02-01T09:05:13.719114.",
+      "flow_ids": [
+       "flw_000451",
+       "flw_000453",
+       "flw_000452",
+       "flw_000454"
+      ],
+      "technique_id": "T1030"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 35.98194885253906,
+    "summary_text": "A medium-severity network security incident occurred from 2026-02-01T09:30:00 to 2026-02-01T09:31:00, involving 4 alerts across 2 hosts. The incident started with host 10.0.0.31 being attacked, followed by host 198.51.100.77. The most critical host is 198.51.100.77, as it was the destination of 4 flows and the source of 0 flows, indicating a potential exfiltration attempt.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a host, 10.0.0.31, being attacked first.",
+      "flow_ids": [
+       "flw_000451",
+       "flw_000453",
+       "flw_000452",
+       "flw_000454"
+      ],
+      "technique_id": "T1030"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 45.393815994262695,
+    "summary_text": "A medium-severity network security incident occurred from 2026-02-01T09:30:00 to 2026-02-01T09:31:00, involving 4 alerts across 2 hosts. The incident started with host 10.0.0.31 being attacked, followed by host 198.51.100.77. The most critical host is 198.51.100.77, as it was the destination of 4 flows and the source of 0 flows, indicating a potential exfiltration attempt. Possibly, the incident was related to T1030 Data Transfer Size Limits tactic.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a host, 10.0.0.31, being attacked first.",
+      "flow_ids": [
+       "flw_000451",
+       "flw_000453",
+       "flw_000452",
+       "flw_000454"
+      ],
+      "technique_id": "T1030"
+     }
+    ],
+    "rejected_findings": []
+   }
+  ]
+ },
+ {
+  "incident": "INC-E5",
+  "title": "Botnet beaconing",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": [
+   {
+    "proposed": 1,
+    "accepted": 0,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [
+     "contains numbers not in the data: ['1']"
+    ],
+    "seconds": 103.28945922851562,
+    "summary_text": "A medium-severity network security incident occurred from 2026-02-01T09:40:00 to 2026-02-01T09:48:00, with 25 alerts across 2 hosts. The incident started with host 10.0.0.44, which was first attacked at 09:04:30.946440 on February 1, 2026. The most critical host is 198.51.100.99, which was the source of 25 flows and the destination of 0 flows.",
+    "accepted_findings": [],
+    "rejected_findings": [
+     {
+      "finding": {
+       "claim": "The incident started with a host, 10.0.0.44, which was first attacked at 09:04:30.946440 on February 1, 2026.",
+       "flow_ids": [
+        "flw_000455",
+        "flw_000479"
+       ],
+       "technique_id": "T1071.001"
+      },
+      "problems": [
+       "contains numbers not in the data: ['1']"
+      ]
+     }
+    ]
+   },
+   {
+    "proposed": 5,
+    "accepted": 4,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [
+     "cites flows never shown to the agent: ['10.0.0.44', '198.51.100.99']"
+    ],
+    "seconds": 113.51393127441406,
+    "summary_text": "A medium-severity bot attack occurred on 10.0.0.44 from 2026-02-01T09:40:00 to 2026-02-01T09:48:00, using Web Protocols and Application Layer Protocol tactics. The attack lasted 8 minutes and was rated high-risk with a risk score of 0.97. Host 10.0.0.44 matters most as the source of 35 flows, while host 198.51.100.99 was the destination of 25 flows.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a bot attack on host 10.0.0.44.",
+      "flow_ids": [
+       "flw_000455",
+       "flw_000479"
+      ],
+      "technique_id": "T1071.001"
+     },
+     {
+      "claim": "The attack lasted for 8 minutes, from 09:40:00 to 09:48:00.",
+      "flow_ids": [
+       "flw_000455",
+       "flw_000479"
+      ],
+      "technique_id": null
+     },
+     {
+      "claim": "The bot attack used Web Protocols, Application Layer Protocol, Bidirectional Communication, One-Way Communication, and Dynamic Resolution tactics.",
+      "flow_ids": [
+       "flw_000455",
+       "flw_000479"
+      ],
+      "technique_id": "T1071.001"
+     },
+     {
+      "claim": "The attack was rated as high risk, with a risk score of 0.97.",
+      "flow_ids": [
+       "flw_000478",
+       "flw_000457",
+       "flw_000461",
+       "flw_000473",
+       "flw_000469"
+      ],
+      "technique_id": "T1071"
+     }
+    ],
+    "rejected_findings": [
+     {
+      "finding": {
+       "claim": "Host 10.0.0.44 was the source of 35 flows, while host 198.51.100.99 was the destination of 25 flows.",
+       "flow_ids": [
+        "10.0.0.44",
+        "198.51.100.99"
+       ],
+       "technique_id": null
+      },
+      "problems": [
+       "cites flows never shown to the agent: ['10.0.0.44', '198.51.100.99']"
+      ]
+     }
+    ]
+   },
+   {
+    "proposed": 5,
+    "accepted": 4,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [
+     "cites flows never shown to the agent: ['10.0.0.44', '198.51.100.99']"
+    ],
+    "seconds": 94.79951906204224,
+    "summary_text": "A medium-severity bot attack occurred on 10.0.0.44 from 2026-02-01T09:40:00 to 2026-02-01T09:48:00, using Web Protocols and Application Layer Protocol tactics. The attack lasted 8 minutes and was rated high-risk with a risk score of 0.97. Host 10.0.0.44 matters most as the source of 35 flows, while host 198.51.100.99 was the destination of 25 flows.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a bot attack on host 10.0.0.44.",
+      "flow_ids": [
+       "flw_000455",
+       "flw_000479"
+      ],
+      "technique_id": "T1071.001"
+     },
+     {
+      "claim": "The attack lasted for 8 minutes, from 09:40:00 to 09:48:00.",
+      "flow_ids": [
+       "flw_000455",
+       "flw_000479"
+      ],
+      "technique_id": null
+     },
+     {
+      "claim": "The bot attack used Web Protocols, Application Layer Protocol, Bidirectional Communication, One-Way Communication, and Dynamic Resolution tactics.",
+      "flow_ids": [
+       "flw_000455",
+       "flw_000479"
+      ],
+      "technique_id": "T1071.001"
+     },
+     {
+      "claim": "The attack was rated as high risk, with a risk score of 0.97.",
+      "flow_ids": [
+       "flw_000478",
+       "flw_000457",
+       "flw_000461",
+       "flw_000473",
+       "flw_000469"
+      ],
+      "technique_id": "T1071"
+     }
+    ],
+    "rejected_findings": [
+     {
+      "finding": {
+       "claim": "Host 10.0.0.44 was the source of 35 flows, while host 198.51.100.99 was the destination of 25 flows.",
+       "flow_ids": [
+        "10.0.0.44",
+        "198.51.100.99"
+       ],
+       "technique_id": null
+      },
+      "problems": [
+       "cites flows never shown to the agent: ['10.0.0.44', '198.51.100.99']"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "incident": "INC-E6",
+  "title": "SQL injection",
+  "deterministic": {
+   "stage_order": true,
+   "top1": 1.0,
+   "top5": 1.0,
+   "pivot": true,
+   "key_hosts": 1.0
+  },
+  "runs": [
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 97.08443808555603,
+    "summary_text": "A medium-severity web attack - Sql Injection occurred on 203.0.113.30 from 2026-02-01T09:50:00 to 2026-02-01T09:51:10, targeting this host due to 15 alerts. The attack was verified against retrieved evidence and accepted as part of the incident. The source host, 203.0.113.30, was the most critical host due to its role as the source of the attack.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a host, 203.0.113.30, being attacked by a Web Attack - Sql Injection attack.",
+      "flow_ids": [
+       "flw_000480",
+       "flw_000494"
+      ],
+      "technique_id": "T1055.005"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 33.47185659408569,
+    "summary_text": "A medium-severity web attack - Sql Injection occurred on 203.0.113.30 from 2026-02-01T09:50:00 to 2026-02-01T09:51:10, targeting this host due to 15 alerts. The attack was verified against retrieved evidence and accepted as part of the incident. The source host, 203.0.113.30, was the most critical host due to its role as the source of the attack.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a host, 203.0.113.30, being attacked by a Web Attack - Sql Injection attack.",
+      "flow_ids": [
+       "flw_000480",
+       "flw_000494"
+      ],
+      "technique_id": "T1055.005"
+     }
+    ],
+    "rejected_findings": []
+   },
+   {
+    "proposed": 1,
+    "accepted": 1,
+    "summary_ok": true,
+    "summary_note": null,
+    "parse_error": false,
+    "rejections": [],
+    "seconds": 33.10954928398132,
+    "summary_text": "A medium-severity web attack - Sql Injection occurred on 203.0.113.30 from 2026-02-01T09:50:00 to 2026-02-01T09:51:10, targeting this host due to 15 alerts. The attack was verified against retrieved evidence and accepted as part of the incident. The source host, 203.0.113.30, was the most critical host due to its role as the source of the attack.",
+    "accepted_findings": [
+     {
+      "claim": "The incident started with a host, 203.0.113.30, being attacked by a Web Attack - Sql Injection attack.",
+      "flow_ids": [
+       "flw_000480",
+       "flw_000494"
+      ],
+      "technique_id": "T1055.005"
+     }
+    ],
+    "rejected_findings": []
+   }
+  ]
+ }
+]

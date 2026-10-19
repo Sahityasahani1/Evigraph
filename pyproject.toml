@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evigraph"
+version = "0.1.0"
+description = "EviGraph: Verified Network Forensic Pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Member 1 (Data & Traffic Pipeline)" },
+    { name = "Member 2 (Detection & Graph Engine)" },
+]
+dependencies = [
+    "pandas>=2.2.0",
+    "pyarrow>=19.0.0",
+    "duckdb>=1.2.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "typer>=0.15.0",
+    "pyyaml>=6.0.0",
+    "dpkt>=1.9.8",
+    "scipy>=1.15.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "hypothesis>=6.100.0",
+    "ruff>=0.9.0",
+]
+
+[project.scripts]
+evigraph-data = "data.cli:app"
+data-cli = "data.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["data*"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-ra -q --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E501", "B008", "B904"]

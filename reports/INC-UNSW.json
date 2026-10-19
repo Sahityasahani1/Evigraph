@@ -1,0 +1,454 @@
+{
+ "incident_id": "INC-UNSW",
+ "error": null,
+ "severity_score": 0.972,
+ "start": "2026-11-02T09:05:04.094161",
+ "end": "2026-11-02T10:26:39.545619",
+ "alert_count": 8400,
+ "host_count": 110,
+ "report_markdown": "# Incident report: INC-UNSW\n\n## Executive summary (model-written, verified)\nThe network security incident began with reconnaissance from 198.51.100.3, 198.51.100.2, and 198.51.100.4 to 10.0.1.28, 10.0.1.17, and 10.0.1.16, generating 2100 alerts. The attackers then used fuzzers to scan for vulnerabilities, followed by exploits targeting 10.0.1.20, and finally established a backdoor through 10.0.1.10, 10.0.1.12, 10.0.1.13, 10.0.1.11, 10.0.1.14, 198.51.100.11, 198.51.100.10, 198.51.100.12, and 198.51.100.13, generating 2100 alerts. The most critical host is 198.51.100.11, which was initially a source of fuzzing alerts and later became a target of backdoor alerts, indicating a possible callback or reused infrastructure.\n\n## Overview\n- Severity: 0.972 (HIGH; bands: >=0.8 high, >=0.5 medium)\n- Time span: 2026-11-02T09:05:04.094161 to 2026-11-02T10:26:39.545619\n- Alerts: 8400 across 110 hosts\n\n## Timeline (from detector alerts)\n1. 2026-11-02T09:05:04.094161 to 2026-11-02T09:11:39.453799: Reconnaissance, 2100 alerts, from 198.51.100.3, 198.51.100.2, 198.51.100.4 to 10.0.1.28, 10.0.1.17, 10.0.1.16, 10.0.1.21, 10.0.1.73 and 65 more [flw_unsw_recon_04225, flw_unsw_recon_09901]\n2. 2026-11-02T09:21:54.599564 to 2026-11-02T09:29:59.821140: Fuzzers, 2100 alerts, from 198.51.100.15, 198.51.100.30, 198.51.100.35, 198.51.100.10, 198.51.100.14 and 33 more to 10.0.1.5, 10.0.1.6, 10.0.1.20 [flw_unsw_fuzz_03138, flw_unsw_fuzz_02344]\n3. 2026-11-02T09:59:51.633232 to 2026-11-02T10:09:59.669952: Exploits, 2100 alerts, from 198.51.100.9, 198.51.100.8, 198.51.100.5, 198.51.100.7, 198.51.100.6 to 10.0.1.20, 10.0.1.6, 10.0.1.5 [flw_unsw_exp_07777, flw_unsw_exp_09828]\n4. 2026-11-02T10:10:22.296697 to 2026-11-02T10:26:39.545619: Backdoor, 2100 alerts, from 10.0.1.10, 10.0.1.12, 10.0.1.13, 10.0.1.11, 10.0.1.14 to 198.51.100.11, 198.51.100.10, 198.51.100.12, 198.51.100.13 [flw_unsw_back_02540, flw_unsw_back_09317]\n\n## Possible pivot hosts\n- None: no host appears as both a target and a source of alerts.\n\n## Hosts whose role changed across stages (computed from the alerts)\n- 10.0.1.10: target in Reconnaissance, then source in Backdoor (possible compromise)\n- 10.0.1.12: target in Reconnaissance, then source in Backdoor (possible compromise)\n- 10.0.1.13: target in Reconnaissance, then source in Backdoor (possible compromise)\n- 10.0.1.11: target in Reconnaissance, then source in Backdoor (possible compromise)\n- 10.0.1.14: target in Reconnaissance, then source in Backdoor (possible compromise)\n- 198.51.100.11: source in Fuzzers, then target in Backdoor (possible callback or reused infrastructure)\n- 198.51.100.10: source in Fuzzers, then target in Backdoor (possible callback or reused infrastructure)\n- 198.51.100.12: source in Fuzzers, then target in Backdoor (possible callback or reused infrastructure)\n- 198.51.100.13: source in Fuzzers, then target in Backdoor (possible callback or reused infrastructure)\n\n## Key hosts\n- 10.0.1.10: source of 457 flows (4 destination hosts, 4 destination ports), destination of 37 flows\n- 10.0.1.12: source of 440 flows (4 destination hosts, 4 destination ports), destination of 25 flows\n- 198.51.100.11: source of 61 flows (3 destination hosts, 4 destination ports), destination of 551 flows\n- 10.0.1.20: source of 0 flows (0 destination hosts, 0 destination ports), destination of 1448 flows\n\n## ATT&CK mapping (best search match per stage)\n- Reconnaissance: T1046 Network Service Discovery (tactic: discovery); other candidates: T1049, T1018, T1016.001, T1595\n- Fuzzers: T1595.002 Vulnerability Scanning (tactic: reconnaissance); other candidates: T1046, T1190, T1592.003, T1557.004\n- Exploits: T1210 Exploitation of Remote Services (tactic: lateral-movement); other candidates: T1190, T1203, T1021, T1133\n- Backdoor: T1668 Exclusive Control (tactic: persistence); other candidates: T1554, T1563, T1021, T1133\n\n## Analyst findings (each verified against retrieved evidence)\n- The incident started with reconnaissance, possibly involving network service discovery and active scanning. (T1595.002) [flw_unsw_recon_04225, flw_unsw_recon_09901]\n\n## Verification summary\n- Findings proposed: 1, accepted: 1, rejected: 0",
+ "summary": "The network security incident began with reconnaissance from 198.51.100.3, 198.51.100.2, and 198.51.100.4 to 10.0.1.28, 10.0.1.17, and 10.0.1.16, generating 2100 alerts. The attackers then used fuzzers to scan for vulnerabilities, followed by exploits targeting 10.0.1.20, and finally established a backdoor through 10.0.1.10, 10.0.1.12, 10.0.1.13, 10.0.1.11, 10.0.1.14, 198.51.100.11, 198.51.100.10, 198.51.100.12, and 198.51.100.13, generating 2100 alerts. The most critical host is 198.51.100.11, which was initially a source of fuzzing alerts and later became a target of backdoor alerts, indicating a possible callback or reused infrastructure.",
+ "summary_withheld_reason": null,
+ "timeline": [
+  {
+   "attack_class": "Reconnaissance",
+   "alert_count": 2100,
+   "first_seen": "2026-11-02T09:05:04.094161",
+   "last_seen": "2026-11-02T09:11:39.453799",
+   "sources": [
+    "198.51.100.3",
+    "198.51.100.2",
+    "198.51.100.4"
+   ],
+   "distinct_sources": 3,
+   "targets": [
+    "10.0.1.28",
+    "10.0.1.17",
+    "10.0.1.16",
+    "10.0.1.21",
+    "10.0.1.73"
+   ],
+   "distinct_targets": 70,
+   "first_flow_id": "flw_unsw_recon_04225",
+   "last_flow_id": "flw_unsw_recon_09901"
+  },
+  {
+   "attack_class": "Fuzzers",
+   "alert_count": 2100,
+   "first_seen": "2026-11-02T09:21:54.599564",
+   "last_seen": "2026-11-02T09:29:59.821140",
+   "sources": [
+    "198.51.100.15",
+    "198.51.100.30",
+    "198.51.100.35",
+    "198.51.100.10",
+    "198.51.100.14"
+   ],
+   "distinct_sources": 38,
+   "targets": [
+    "10.0.1.5",
+    "10.0.1.6",
+    "10.0.1.20"
+   ],
+   "distinct_targets": 3,
+   "first_flow_id": "flw_unsw_fuzz_03138",
+   "last_flow_id": "flw_unsw_fuzz_02344"
+  },
+  {
+   "attack_class": "Exploits",
+   "alert_count": 2100,
+   "first_seen": "2026-11-02T09:59:51.633232",
+   "last_seen": "2026-11-02T10:09:59.669952",
+   "sources": [
+    "198.51.100.9",
+    "198.51.100.8",
+    "198.51.100.5",
+    "198.51.100.7",
+    "198.51.100.6"
+   ],
+   "distinct_sources": 5,
+   "targets": [
+    "10.0.1.20",
+    "10.0.1.6",
+    "10.0.1.5"
+   ],
+   "distinct_targets": 3,
+   "first_flow_id": "flw_unsw_exp_07777",
+   "last_flow_id": "flw_unsw_exp_09828"
+  },
+  {
+   "attack_class": "Backdoor",
+   "alert_count": 2100,
+   "first_seen": "2026-11-02T10:10:22.296697",
+   "last_seen": "2026-11-02T10:26:39.545619",
+   "sources": [
+    "10.0.1.10",
+    "10.0.1.12",
+    "10.0.1.13",
+    "10.0.1.11",
+    "10.0.1.14"
+   ],
+   "distinct_sources": 5,
+   "targets": [
+    "198.51.100.11",
+    "198.51.100.10",
+    "198.51.100.12",
+    "198.51.100.13"
+   ],
+   "distinct_targets": 4,
+   "first_flow_id": "flw_unsw_back_02540",
+   "last_flow_id": "flw_unsw_back_09317"
+  }
+ ],
+ "cross_stage_hosts": [
+  {
+   "host_ip": "10.0.1.10",
+   "pattern": "target_then_source",
+   "stages": [
+    {
+     "stage": "Reconnaissance",
+     "role": "target",
+     "alerts": 37
+    },
+    {
+     "stage": "Backdoor",
+     "role": "source",
+     "alerts": 457
+    }
+   ]
+  },
+  {
+   "host_ip": "10.0.1.12",
+   "pattern": "target_then_source",
+   "stages": [
+    {
+     "stage": "Reconnaissance",
+     "role": "target",
+     "alerts": 25
+    },
+    {
+     "stage": "Backdoor",
+     "role": "source",
+     "alerts": 440
+    }
+   ]
+  },
+  {
+   "host_ip": "10.0.1.13",
+   "pattern": "target_then_source",
+   "stages": [
+    {
+     "stage": "Reconnaissance",
+     "role": "target",
+     "alerts": 29
+    },
+    {
+     "stage": "Backdoor",
+     "role": "source",
+     "alerts": 419
+    }
+   ]
+  },
+  {
+   "host_ip": "10.0.1.11",
+   "pattern": "target_then_source",
+   "stages": [
+    {
+     "stage": "Reconnaissance",
+     "role": "target",
+     "alerts": 17
+    },
+    {
+     "stage": "Backdoor",
+     "role": "source",
+     "alerts": 416
+    }
+   ]
+  },
+  {
+   "host_ip": "10.0.1.14",
+   "pattern": "target_then_source",
+   "stages": [
+    {
+     "stage": "Reconnaissance",
+     "role": "target",
+     "alerts": 18
+    },
+    {
+     "stage": "Backdoor",
+     "role": "source",
+     "alerts": 368
+    }
+   ]
+  },
+  {
+   "host_ip": "198.51.100.11",
+   "pattern": "source_then_target",
+   "stages": [
+    {
+     "stage": "Fuzzers",
+     "role": "source",
+     "alerts": 61
+    },
+    {
+     "stage": "Backdoor",
+     "role": "target",
+     "alerts": 551
+    }
+   ]
+  },
+  {
+   "host_ip": "198.51.100.10",
+   "pattern": "source_then_target",
+   "stages": [
+    {
+     "stage": "Fuzzers",
+     "role": "source",
+     "alerts": 62
+    },
+    {
+     "stage": "Backdoor",
+     "role": "target",
+     "alerts": 538
+    }
+   ]
+  },
+  {
+   "host_ip": "198.51.100.12",
+   "pattern": "source_then_target",
+   "stages": [
+    {
+     "stage": "Fuzzers",
+     "role": "source",
+     "alerts": 53
+    },
+    {
+     "stage": "Backdoor",
+     "role": "target",
+     "alerts": 519
+    }
+   ]
+  },
+  {
+   "host_ip": "198.51.100.13",
+   "pattern": "source_then_target",
+   "stages": [
+    {
+     "stage": "Fuzzers",
+     "role": "source",
+     "alerts": 54
+    },
+    {
+     "stage": "Backdoor",
+     "role": "target",
+     "alerts": 492
+    }
+   ]
+  },
+  {
+   "host_ip": "10.0.1.20",
+   "pattern": "target_in_every_stage",
+   "stages": [
+    {
+     "stage": "Reconnaissance",
+     "role": "target",
+     "alerts": 34
+    },
+    {
+     "stage": "Fuzzers",
+     "role": "target",
+     "alerts": 686
+    },
+    {
+     "stage": "Exploits",
+     "role": "target",
+     "alerts": 728
+    }
+   ]
+  }
+ ],
+ "attack_matches": {
+  "Reconnaissance": [
+   {
+    "id": "T1046",
+    "name": "Network Service Discovery",
+    "tactics": [
+     "discovery"
+    ],
+    "score": 0.816
+   },
+   {
+    "id": "T1049",
+    "name": "System Network Connections Discovery",
+    "tactics": [
+     "discovery"
+    ],
+    "score": 0.737
+   },
+   {
+    "id": "T1018",
+    "name": "Remote System Discovery",
+    "tactics": [
+     "discovery"
+    ],
+    "score": 0.727
+   },
+   {
+    "id": "T1016.001",
+    "name": "Internet Connection Discovery",
+    "tactics": [
+     "discovery"
+    ],
+    "score": 0.726
+   },
+   {
+    "id": "T1595",
+    "name": "Active Scanning",
+    "tactics": [
+     "reconnaissance"
+    ],
+    "score": 0.717
+   }
+  ],
+  "Fuzzers": [
+   {
+    "id": "T1595.002",
+    "name": "Vulnerability Scanning",
+    "tactics": [
+     "reconnaissance"
+    ],
+    "score": 0.741
+   },
+   {
+    "id": "T1046",
+    "name": "Network Service Discovery",
+    "tactics": [
+     "discovery"
+    ],
+    "score": 0.717
+   },
+   {
+    "id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactics": [
+     "initial-access"
+    ],
+    "score": 0.713
+   },
+   {
+    "id": "T1592.003",
+    "name": "Firmware",
+    "tactics": [
+     "reconnaissance"
+    ],
+    "score": 0.713
+   },
+   {
+    "id": "T1557.004",
+    "name": "Evil Twin",
+    "tactics": [
+     "credential-access",
+     "collection"
+    ],
+    "score": 0.712
+   }
+  ],
+  "Exploits": [
+   {
+    "id": "T1210",
+    "name": "Exploitation of Remote Services",
+    "tactics": [
+     "lateral-movement"
+    ],
+    "score": 0.822
+   },
+   {
+    "id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactics": [
+     "initial-access"
+    ],
+    "score": 0.761
+   },
+   {
+    "id": "T1203",
+    "name": "Exploitation for Client Execution",
+    "tactics": [
+     "execution"
+    ],
+    "score": 0.752
+   },
+   {
+    "id": "T1021",
+    "name": "Remote Services",
+    "tactics": [
+     "lateral-movement"
+    ],
+    "score": 0.748
+   },
+   {
+    "id": "T1133",
+    "name": "External Remote Services",
+    "tactics": [
+     "persistence",
+     "initial-access"
+    ],
+    "score": 0.745
+   }
+  ],
+  "Backdoor": [
+   {
+    "id": "T1668",
+    "name": "Exclusive Control",
+    "tactics": [
+     "persistence"
+    ],
+    "score": 0.752
+   },
+   {
+    "id": "T1554",
+    "name": "Compromise Host Software Binary",
+    "tactics": [
+     "persistence"
+    ],
+    "score": 0.75
+   },
+   {
+    "id": "T1563",
+    "name": "Remote Service Session Hijacking",
+    "tactics": [
+     "lateral-movement"
+    ],
+    "score": 0.741
+   },
+   {
+    "id": "T1021",
+    "name": "Remote Services",
+    "tactics": [
+     "lateral-movement"
+    ],
+    "score": 0.739
+   },
+   {
+    "id": "T1133",
+    "name": "External Remote Services",
+    "tactics": [
+     "persistence",
+     "initial-access"
+    ],
+    "score": 0.738
+   }
+  ]
+ },
+ "findings": [
+  {
+   "claim": "The incident started with reconnaissance, possibly involving network service discovery and active scanning.",
+   "flow_ids": [
+    "flw_unsw_recon_04225",
+    "flw_unsw_recon_09901"
+   ],
+   "technique_id": "T1595.002"
+  }
+ ],
+ "rejected_findings": []
+}
