@@ -7,25 +7,42 @@
 </head>
 <body>
   <canvas id="scene"></canvas>
+  <div id="mapzone"></div>
   <header class="p" id="hd">
-    <b>⬡ EviGraph</b>
-    <select id="incSel"></select>
-    <span class="mu" id="mode"></span>
+    <b class="brand"><span data-ico="hex"></span>EviGraph</b>
+    <select id="incSel" data-tip="incident"></select>
+    <span class="mu badge" id="mode"></span>
     <span class="grow"></span>
-    <span id="clk" class="mu"></span>
-    <button id="bBenign" class="on">Benign</button>
-    <button id="bRotate" class="on">Auto-rotate</button>
-    <button id="bPackets" class="on">Packets</button>
+    <button id="bBenign" class="on sm" data-tip="benign">Normal traffic</button>
+    <button id="bRotate" class="on sm" data-tip="rotate">Auto-rotate</button>
+    <button id="bPackets" class="on sm" data-tip="packets">Packets</button>
+    <button id="bFollow" class="on sm" data-tip="follow">Camera follow</button>
+    <div class="seg" data-tip="mode"><button data-mode="beginner">Beginner</button><button data-mode="analyst">Analyst</button></div>
   </header>
+  <nav class="p" id="rail">
+    <button data-view="overview" data-ico="home" data-tip="v_overview" class="on"></button>
+    <button data-view="report" data-ico="report" data-tip="v_report"></button>
+    <hr />
+    <button data-view="courtroom" data-ico="scale" data-tip="courtroom" class="soon"></button>
+    <button data-view="containment" data-ico="shield" data-tip="containment" class="soon"></button>
+    <button data-view="privacy" data-ico="lock" data-tip="privacy" class="soon"></button>
+    <span class="grow"></span>
+    <button id="bTour" data-ico="help" data-tip="tour"></button>
+    <button id="bTheme" data-tip="theme"></button>
+  </nav>
   <aside class="p" id="left"></aside>
-  <aside class="p" id="right">
-    <div><button id="tabE" class="on">Evidence</button> <button id="tabP">Verified report</button></div>
-    <div id="detail"></div>
-  </aside>
+  <aside class="p" id="right"><div id="detail"></div></aside>
+  <div class="p" id="cap"></div>
   <footer class="p" id="bottom">
-    <div class="row"><button id="play">▶ Replay</button><span class="mu">Drag = orbit · wheel = zoom · click nodes/edges</span></div>
-    <div id="tl"></div>
-    <input type="range" id="slider" min="0" max="30" step="0.01" value="0" />
+    <div class="row">
+      <button id="prev" data-ico="prev" data-tip="step"></button>
+      <button id="play" data-tip="replay"></button>
+      <button id="next" data-ico="next" data-tip="step"></button>
+      <span id="clk" class="mu"></span><span class="grow"></span>
+      <span class="mu hint">Drag = orbit · wheel = zoom · click = details · hover = explain</span>
+    </div>
+    <div id="tl" data-tip="timeline"></div>
+    <input type="range" id="slider" min="0" max="30" step="0.01" value="0" data-tip="replay" />
   </footer>
   <script type="module" src="/src/main.js"></script>
 </body>
