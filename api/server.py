@@ -1,4 +1,6 @@
+
 import json
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -33,6 +35,84 @@ def load_cases():
         return json.load(f)
 
 
+def to_iso(value):
+    if not value:
+        return None
+
+    # Convert timestamps to ISO format without changing their time.
+    return datetime.fromisoformat(
+        value.replace("Z", "+00:00")
+    ).isoformat()
+
+
+def get_chain(incident):
+    # INC-0002 stores its chain under causal_provenance.
+    chain = incident.get("primary_attack_chain")
+    if not chain:
+        chain = incident.get("causal_provenance", {}).get(
+            "primary_attack_chain", []
+        )
+    return chain
+
+
+def normalize_incident(incident):
+    chain = get_chain(incident)
+
+    host_ips = incident.get("affected_hosts", [])
+    hosts = []
+
+    for ip in host_ips:
+        role = next(
+            (
+                node.get("role")
+                for node in incident.get("subgraph", {}).get("nodes", [])
+                if node.get("id") == ip
+            ),
+            "unknown",
+        )
+
+        hosts.append({
+            "id": ip,
+            "ip": ip,
+            "zone": None,
+            "role": role,
+        })
+
+    stages = []
+
+    for step in chain:
+        timestamp = to_iso(step.get("timestamp"))
+
+        stages.append({
+            "stage_id": f"{incident['incident_id']}-stage-{step['step']}",
+            "order": step["step"],
+            "tactic": step.get("attack_stage", "Unknown"),
+            "src": step.get("source"),
+            "dst": step.get("target"),
+            "start": timestamp,
+            "end": timestamp,
+            "confidence": step.get("risk_score"),
+            "observed": True,
+            "evidence": [{
+                "flow_id": step.get("flow_id"),
+                "ts": timestamp,
+                "pcap_sha256": None,
+            }],
+        })
+
+    return {
+        "incident_id": incident["incident_id"],
+        "score": incident.get("incident_score", 0),
+        "start": to_iso(incident.get("start_time")),
+        "end": to_iso(incident.get("end_time")),
+        "status": incident.get("status", "Open"),
+        "hosts": hosts,
+        "stages": stages,
+        "attack_classes": incident.get("attack_classes", []),
+        "total_alerts": incident.get("total_alerts", 0),
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -41,18 +121,8 @@ def health():
 @app.get("/incidents")
 def get_incidents():
     data = load_cases()
-
     return [
-        {
-            "incident_id": incident["incident_id"],
-            "score": incident.get("incident_score", 0),
-            "start": incident.get("start_time"),
-            "end": incident.get("end_time"),
-            "status": incident.get("status", "Open"),
-            "hosts": incident.get("affected_hosts", []),
-            "attack_classes": incident.get("attack_classes", []),
-            "total_alerts": incident.get("total_alerts", 0),
-        }
+        normalize_incident(incident)
         for incident in data.get("incidents", [])
     ]
 
@@ -63,6 +133,6 @@ def get_incident(incident_id: str):
 
     for incident in data.get("incidents", []):
         if incident["incident_id"] == incident_id:
-            return incident
+            return normalize_incident(incident)
 
     raise HTTPException(status_code=404, detail="Incident not found")
