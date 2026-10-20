@@ -16,12 +16,23 @@ def _incident_files():
 
 
 def list_incidents(agent=None):
+    """Same row shape as api.list_incidents, most severe first."""
     rows = []
     for path in _incident_files():
         report = json.loads(path.read_text(encoding="utf-8"))
-        rows.append({k: report.get(k) for k in
-                     ("incident_id", "severity_score", "start", "end", "alert_count", "host_count")})
-    return rows
+        classes = {}
+        for stage in report.get("timeline") or []:
+            name = stage.get("attack_class")
+            if name:
+                classes[name] = classes.get(name, 0) + stage.get("alert_count", 0)
+        rows.append({
+            "incident_id": report.get("incident_id"),
+            "severity_score": report.get("severity_score"),
+            "alert_count": report.get("alert_count"),
+            "host_count": report.get("host_count"),
+            "classes": classes,
+        })
+    return sorted(rows, key=lambda r: -(r["severity_score"] or 0))
 
 
 def investigate(agent, incident_id):

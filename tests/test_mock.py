@@ -28,3 +28,10 @@ def test_mock_lists_incidents():
 def test_mock_unknown_incident_gives_an_error():
     r = investigate(load_agent(), "INC-NOPE")
     assert "Unknown incident" in r["error"]
+
+
+
+def test_mock_list_rows_match_the_real_shape():
+    row = list_incidents(load_agent())[0]
+    assert set(row) == {"incident_id", "severity_score", "alert_count", "host_count", "classes"}
+    assert row["classes"]["C2-Heartbeat"] == 2000
