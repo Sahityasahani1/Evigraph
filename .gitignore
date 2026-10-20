@@ -56,3 +56,8 @@ data/knowledge/enterprise-attack.json
 data/knowledge/attack_techniques.json
 data/knowledge/attack_index.npz
 data/standin/
+
+# Frontend build & environment
+node_modules/
+dist/
+.env.local
