@@ -10,7 +10,7 @@ const ip = (inc, id) => esc(host(inc, id)?.ip ?? id);
 const seen = o => `<span class="chip2 ${o ? 'ok' : 'warn'}" data-tip="observed">${icon(o ? 'eye' : 'bulb', 12)}${o ? 'Seen' : 'Likely'}</span>`;
 const conf = c => `<span class="chip2 c-${confWord(c).toLowerCase()}" data-tip="confidence"><span class="beg">${confWord(c)} confidence</span><span class="ana">${c.toFixed(2)} · ${confWord(c)}</span></span>`;
 const stChip = (id, s) => `<span class="st st-${s}" data-tip="status" style="--s:${STATUS[s].col}">${STATUS[s].label}</span>`;
-const route = (inc, s) => `${icon(roleIcon(host(inc, s.src)), 14)} ${ip(inc, s.src)} <span class="arrow">→</span> ${icon(roleIcon(host(inc, s.dst)), 14)} ${ip(inc, s.dst)}:${esc(s.port)}`;
+const route = (inc, s) => `${icon(roleIcon(host(inc, s.src)), 14)} ${ip(inc, s.src)} <span class="arrow">→</span> ${icon(roleIcon(host(inc, s.dst)), 14)} ${ip(inc, s.dst)}${s.port ? `:${esc(s.port)}` : ''}`;
 
 export const heroHtml = inc => {
   const [vl, vc] = verdict(inc.score), obs = inc.stages.filter(s => s.observed).length;
@@ -19,7 +19,7 @@ export const heroHtml = inc => {
   <div class="hero-meta"><span data-tip="chain">${icon('scout', 14)} ${inc.stages.length} steps</span><span data-tip="observed">${icon('eye', 14)} ${obs} directly seen</span><span data-tip="status">${icon('laptop', 14)} ${affected(inc).length} machines hit</span><span>${Math.round(inc.durationMin)} min</span></div></div>`;
 };
 
-export const chainHtml = inc => `<h4 data-tip="chain">The story, step by step</h4><div class="chain">` + inc.stages.map((s, i) => {
+export const chainHtml = inc => `<h4 data-tip="chain">The story, step by step</h4><div class="chain">` + (inc.stages?.length ? inc.stages.map((s, i) => {
   const p = plainOf(s.tactic);
   return `<div class="card" data-stage="${esc(s.stage_id)}" style="--c:${css(colorOf(s.tactic))}">
     <div class="ico-tile">${icon(p.icon, 20)}</div>
@@ -29,14 +29,18 @@ export const chainHtml = inc => `<h4 data-tip="chain">The story, step by step</h
       <div class="croute">${route(inc, s)}</div>
       <div class="cmeta">${seen(s.observed)}${conf(s.confidence)}</div>
     </div></div>`;
-}).join('') + '</div>';
+}).join('') : '<div class="mu" style="padding:8px 0">No attack steps recorded.</div>') + '</div>';
 
 export function overviewHtml(inc, t) {
-  const s0 = inc.stages[0], src = host(inc, s0.src), st = hostStatus(inc, t);
-  const rows = inc.hosts.filter(h => h.zone !== 'EXTERNAL').map(h => `<div class="mrow" data-host="${esc(h.id)}">${icon(roleIcon(h), 18)}<div><b>${esc(h.id)}</b> <code>${esc(h.ip)}</code><div class="mu">${esc(h.role)} · ${esc(ZONE_TXT[h.zone]?.[0] ?? h.zone)}</div></div>${stChip(h.id, st[h.id])}</div>`).join('');
-  return `<h4>Where it started</h4>
-  <div class="mrow" data-tip="entry">${icon(roleIcon(src), 18)}<div><b>${esc(src?.ip ?? s0.src)}</b><div class="mu">${esc(src?.role ?? '')} · ${esc(ZONE_TXT[src?.zone]?.[0] ?? '')}</div></div></div>
-  <h4 data-tip="status">Machines inside the network</h4>${rows}
+  const s0 = inc.stages?.[0], src = s0 ? host(inc, s0.src) : null, st = hostStatus(inc, t);
+  const rows = (inc.hosts || []).filter(h => h.zone !== 'EXTERNAL').map(h => `<div class="mrow" data-host="${esc(h.id)}">${icon(roleIcon(h), 18)}<div><b>${esc(h.id)}</b> <code>${esc(h.ip)}</code><div class="mu">${esc(h.role)} · ${esc(ZONE_TXT[h.zone]?.[0] ?? h.zone)}</div></div>${stChip(h.id, st[h.id])}</div>`).join('');
+  const entryHtml = s0
+    ? `<h4>Where it started</h4>
+  <div class="mrow" data-tip="entry">${icon(roleIcon(src), 18)}<div><b>${esc(src?.ip ?? s0.src)}</b><div class="mu">${esc(src?.role ?? '')} · ${esc(ZONE_TXT[src?.zone]?.[0] ?? '')}</div></div></div>`
+    : `<h4>Where it started</h4>
+  <div class="mrow" data-tip="entry">${icon('laptop', 18)}<div><b>No entry point detected</b><div class="mu">No attack stages recorded</div></div></div>`;
+  return `${entryHtml}
+  <h4 data-tip="status">Machines inside the network</h4>${rows || '<div class="mu" style="padding:4px 0">No internal machines recorded.</div>'}
   <h4>How to read the map</h4>
   <div class="legend">
     <div>${Object.entries(ZONE_TXT).map(([k, [n, d]]) => `<div class="lz"><b>${n}</b><span class="mu"> ${d}</span></div>`).join('')}</div>
@@ -49,9 +53,9 @@ export function overviewHtml(inc, t) {
   <p class="mu fine">Click a machine, a connection or a story card to open its proof. Click empty space to return here.</p>`;
 }
 
-const receipt = (s, e) => `<div class="receipt"><div class="rh"><span class="tag" data-stage="${esc(s.stage_id)}">${esc(e.flow_id)}</span><span class="mu">${esc(e.ts.slice(11, 19))} UTC</span></div>
-  <div class="rf"><span data-tip="hash">Fingerprint</span> <code>${esc(e.pcap_sha256.slice(0, 16))}…</code>
-  <button class="mini" data-copy="${esc(e.pcap_sha256)}">${icon('copy', 12)} Copy</button></div></div>`;
+const receipt = (s, e) => `<div class="receipt"><div class="rh"><span class="tag" data-stage="${esc(s.stage_id)}">${esc(e.flow_id)}</span><span class="mu">${esc((e.ts || '').slice(11, 19))} UTC</span></div>
+  <div class="rf"><span data-tip="hash">Fingerprint</span> ${e.pcap_sha256 ? `<code>${esc(e.pcap_sha256.slice(0, 16))}…</code>` : '<span class="mu">not recorded</span>'}
+  ${e.pcap_sha256 ? `<button class="mini" data-copy="${esc(e.pcap_sha256)}">${icon('copy', 12)} Copy</button>` : ''}</div></div>`;
 
 export function detailHtml(inc, sel, t) {
   if (sel?.stage) {
@@ -66,8 +70,10 @@ export function detailHtml(inc, sel, t) {
     <h4>What we saw</h4><p>${esc(s.summary)}.</p>
     <p class="mu fine">${s.observed ? 'Seen: found directly in the captured traffic.' : 'Likely: deduced from patterns. A person should confirm it.'}</p>
     <h4 data-tip="explain">Why the system flagged it</h4>` +
-      s.explanation.map(w => `<div class="why">${esc(w.feature)}<div class="bar"><i style="width:${w.weight * 100}%;background:${col}"></i></div></div>`).join('') +
-      `<h4 data-tip="evidence">Proof · ${s.evidence.length} sample conversations</h4>
+      ((s.explanation && s.explanation.length)
+        ? s.explanation.map(w => `<div class="why">${esc(w.feature)}<div class="bar"><i style="width:${(w.weight ?? 0) * 100}%;background:${col}"></i></div></div>`).join('')
+        : '<div class="mu">No feature attributions recorded.</div>') +
+      `<h4 data-tip="evidence">Proof · ${(s.evidence ?? []).length} sample conversations</h4>
       <p class="mu fine">Each receipt is one network conversation. The fingerprint proves the capture was not altered: recompute it and it must match.</p>` +
       s.evidence.map(e => receipt(s, e)).join('');
   }
@@ -141,7 +147,7 @@ export function hoverHtml(inc, h, t) {
     return `<b>${esc(x.id)} · ${esc(x.ip)}</b><div>${esc(x.role)} · ${esc(ZONE_TXT[x.zone]?.[0] ?? x.zone)}</div>${x.zone === 'EXTERNAL' ? '' : `<div class="why">${STATUS[hostStatus(inc, t)[x.id]].label}</div>`}`; }
   const s = inc.stages.find(v => v.stage_id === h.stage); if (!s) return '';
   const p = plainOf(s.tactic);
-  return `<b>${p.title}</b><div>${ip(inc, s.src)} → ${ip(inc, s.dst)}:${esc(s.port)}</div><div class="why">${s.observed ? 'Seen' : 'Likely'} · ${confWord(s.confidence)} confidence</div><div>${esc(s.summary)}</div>`;
+  return `<b>${p.title}</b><div>${ip(inc, s.src)} → ${ip(inc, s.dst)}${s.port ? `:${esc(s.port)}` : ''}</div><div class="why">${s.observed ? 'Seen' : 'Likely'} · ${confWord(s.confidence)} confidence</div><div>${esc(s.summary)}</div>`;
 }
 
 export function capHtml(inc, s, kind) {
@@ -149,7 +155,8 @@ export function capHtml(inc, s, kind) {
     ? `<div class="ico-tile">${icon('check', 20)}</div><div><div class="cap-t"><b>End of incident</b></div><div class="cap-d">${esc(headline(inc))}</div></div>`
     : `<div class="ico-tile">${icon('play', 20)}</div><div><div class="cap-t"><b>Ready</b></div><div class="cap-d">Press Replay to watch the attack unfold. The camera follows each step.</div></div>`;
   const p = plainOf(s.tactic);
+  const cleanSummary = (s.summary || '').replace(/\.+$/, '');
   return `<div class="ico-tile" style="--c:${css(colorOf(s.tactic))}">${icon(p.icon, 20)}</div><div>
-    <div class="cap-t"><b><span class="beg">${p.title}</span><span class="ana">${esc(s.tactic)}</span></b><span class="mu">T+${Math.floor(s.t0)} min</span></div>
-    <div class="cap-d"><span class="beg">${p.what} </span>${esc(s.summary)}.</div></div>`;
+    <div class="cap-t"><b><span class="beg">${p.title}</span><span class="ana">${esc(s.tactic)}</span></b><span class="mu"> T+${Math.floor(s.t0)} min</span></div>
+    <div class="cap-d"><span class="beg">${p.what} </span>${esc(cleanSummary)}.</div></div>`;
 }

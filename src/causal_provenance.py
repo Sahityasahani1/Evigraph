@@ -72,7 +72,7 @@ class CausalProvenanceEngine:
     """
     def __init__(
         self,
-        max_scan_window_secs: float = 180.0,
+        max_scan_window_secs: float = 300.0,
         min_dwell_time_secs: float = 0.05,
         max_dwell_time_secs: float = 600.0,
         min_causal_confidence: float = 0.40

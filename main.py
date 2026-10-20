@@ -20,10 +20,19 @@ from sklearn.metrics import precision_recall_fscore_support, roc_auc_score, aver
 from src.config import SAMPLES_DATA_DIR, OUTPUTS_DIR
 from src.data_loader import FlowDataLoader
 from src.baseline_detector import BaselineDetector
-from src.gnn_detector import GNNDetector
-from src.detectors.autoencoder_detector import AutoencoderDetector
+try:
+    from src.gnn_detector import GNNDetector
+except ImportError:  # torch / torch_geometric are optional
+    GNNDetector = None
+try:
+    from src.detectors.autoencoder_detector import AutoencoderDetector
+except ImportError:
+    AutoencoderDetector = None
 from src.detectors.hist_gb_detector import HistGBDetector
-from src.detectors.ensemble_fuser import EnsembleFuser
+try:
+    from src.detectors.ensemble_fuser import EnsembleFuser
+except ImportError:
+    EnsembleFuser = None
 from src.graph_engine import HostGraphEngine
 from src.incident_cluster import IncidentClusterEngine
 

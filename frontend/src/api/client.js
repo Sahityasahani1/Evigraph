@@ -1,6 +1,7 @@
 // Single data-access layer. UI code never calls fetch() directly.
 // Shapes are defined in docs/API_CONTRACT.md. Mock and real backend must return identical shapes.
 import { USE_MOCK, API_BASE } from '../config.js';
+import { adapt } from './adapt.js';
 
 async function http(path, opts = {}) {
   const token = localStorage.getItem('evigraph_token');
@@ -13,9 +14,10 @@ async function http(path, opts = {}) {
 }
 
 // Convert ISO timestamps to minute offsets from incident start (what the 3D timeline needs).
-function normalize(inc) {
-  const t0 = Date.parse(inc.start);
-  const off = iso => (Date.parse(iso) - t0) / 60000;
+function normalize(raw) {
+  const inc = adapt(raw);
+  const t0 = inc.start ? Date.parse(inc.start) : 0;
+  const off = iso => (iso && !isNaN(Date.parse(iso))) ? Math.max(0, (Date.parse(iso) - t0) / 60000) : 0;
   return {
     ...inc,
     durationMin: Math.max(1, off(inc.end)),

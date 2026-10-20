@@ -37,6 +37,8 @@ def investigate(agent, incident_id: str) -> dict:
         "report_markdown": result["report"],
         "summary": result["summary"],
         "summary_withheld_reason": result["summary_note"],
+        "factual_summary": result["factual_summary"],
+        "host_roles": result["host_roles"],
         "timeline": inc["stages_in_time_order"],
         "cross_stage_hosts": inc.get("cross_stage_hosts", []),
         "attack_matches": {c: r["matches"] for c, r in briefing["attack_matches"].items()},

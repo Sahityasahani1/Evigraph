@@ -1,7 +1,9 @@
 import pytest
 
 from src.agent.agent import _stage_query
-from src.agent.attack_rag import AttackKnowledge
+from src.agent.attack_rag import INDEX, AttackKnowledge
+
+pytestmark = pytest.mark.skipif(not INDEX.exists(), reason="index not built")
 
 EXPECTED = {
     "DNS-Amplification": ("T1498.002",),
