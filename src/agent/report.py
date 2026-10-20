@@ -7,7 +7,7 @@ from ipaddress import ip_address, ip_network
 from pydantic import BaseModel, Field, ValidationError
 
 IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
-FLOW_RE = re.compile(r"\bflw_\d+\b")
+FLOW_RE = re.compile(r"\bflw_[A-Za-z0-9_]+\b")
 TECH_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
 NUM_RE = re.compile(r"\d+(?:\.\d+)?")
 
