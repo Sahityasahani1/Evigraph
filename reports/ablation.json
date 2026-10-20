@@ -1,0 +1,112 @@
+{
+  "rows": [
+    {
+      "incident_id": "INC-0009",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 105
+    },
+    {
+      "incident_id": "INC-0001",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 128
+    },
+    {
+      "incident_id": "INC-0002",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 108
+    },
+    {
+      "incident_id": "INC-0003",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 138
+    },
+    {
+      "incident_id": "INC-0004",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 289
+    },
+    {
+      "incident_id": "INC-0005",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 203
+    },
+    {
+      "incident_id": "INC-0006",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 106
+    },
+    {
+      "incident_id": "INC-0007",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 104
+    },
+    {
+      "incident_id": "INC-0008",
+      "proposed": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": true,
+      "summary_note": "failed verification: contains numbers not in the data: ['13']",
+      "problems": {},
+      "seconds": 93
+    }
+  ],
+  "summary": {
+    "incidents": 9,
+    "proposed": 9,
+    "accepted": 9,
+    "rejected": 0,
+    "faithfulness_without_validator": 1.0,
+    "summaries_withheld": 1,
+    "problems": {}
+  }
+}
