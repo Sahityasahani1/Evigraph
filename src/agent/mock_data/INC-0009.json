@@ -1,0 +1,313 @@
+{
+ "incident_id": "INC-0009",
+ "error": null,
+ "severity_score": 0.9194,
+ "start": "2026-11-02T15:04:49.778564",
+ "end": "2026-11-02T15:56:39.972266",
+ "alert_count": 4100,
+ "host_count": 9,
+ "report_markdown": "# Incident report: INC-0009\n\n## Executive summary (model-written, verified)\nAI-written: every ID, IP and number is checked against the data, but roles and relationships can still be wrong.\nOn 2026-11-02, a network security incident occurred, involving 4100 alerts across 9 hosts in 3 stages: Lateral-SMB-Relay (15:04:49 to 15:14:53), C2-Heartbeat (15:35:15 to 15:56:39), and HTTPS-Exfiltration (15:43:52 to 15:53:19). Internal hosts that sent attack traffic (possibly compromised): 172.20.10.10, 172.20.10.11. External servers that received traffic from internal hosts (possible attacker infrastructure): 203.0.113.88, 198.51.100.25. Internal hosts that received attack traffic (targets): 172.20.10.14, 172.20.10.17, 172.20.10.29, 172.20.10.36, 172.20.10.15.\n\n## Overview\n- Severity: 0.9194 (HIGH; bands: >=0.8 high, >=0.5 medium)\n- Time span: 2026-11-02T15:04:49.778564 to 2026-11-02T15:56:39.972266\n- Alerts: 4100 across 9 hosts\n\n## Timeline (from detector alerts)\n1. 2026-11-02T15:04:49.778564 to 2026-11-02T15:14:53.921692: Lateral-SMB-Relay, 100 alerts, sources (senders): 172.20.10.10; targets (receivers): 172.20.10.14, 172.20.10.17, 172.20.10.29, 172.20.10.36, 172.20.10.15 [flw_apt_smb_05474, flw_apt_smb_06835]\n2. 2026-11-02T15:35:15.526534 to 2026-11-02T15:56:39.972266: C2-Heartbeat, 2000 alerts, sources (senders): 172.20.10.10, 172.20.10.11; targets (receivers): 203.0.113.88, 198.51.100.25 [flw_apt_c2_08753, flw_apt_c2_00643]\n3. 2026-11-02T15:43:52.019064 to 2026-11-02T15:53:19.829900: HTTPS-Exfiltration, 2000 alerts, sources (senders): 172.20.10.11, 172.20.10.10; targets (receivers): 203.0.113.88, 198.51.100.25 [flw_apt_exfil_06163, flw_apt_exfil_09798]\n\n## Possible pivot hosts\n- None: no host appears as both a target and a source of alerts.\n\n## Hosts whose role changed across stages (computed from the alerts)\n- None: no host changed role between stages.\n\n## Host roles (computed from the alerts)\n- Internal hosts that sent attack traffic (possibly compromised): 172.20.10.10, 172.20.10.11\n- External servers that received traffic from internal hosts (possible attacker infrastructure): 203.0.113.88, 198.51.100.25\n- Internal hosts that received attack traffic (targets): 172.20.10.14, 172.20.10.17, 172.20.10.29, 172.20.10.36, 172.20.10.15\n\n## Key hosts\n- 203.0.113.88: sent 0 flows (to 0 hosts on 0 ports) and received 2018 flows\n- 172.20.10.10: sent 3973 flows (to 30 hosts on 5 ports) and received 0 flows\n- 198.51.100.25: sent 58 flows (to 3 hosts on 4 ports) and received 1982 flows\n- 172.20.10.11: sent 3992 flows (to 30 hosts on 5 ports) and received 0 flows\n\n## ATT&CK mapping (best search match per stage)\n- Lateral-SMB-Relay: T1021.002 SMB/Windows Admin Shares (tactic: lateral-movement); other candidates: T1187, T1557.001, T1056.003, T1563\n- C2-Heartbeat: T1071 Application Layer Protocol (tactic: command-and-control); other candidates: T1568, T1071.001, T1102.002, T1102.003\n- HTTPS-Exfiltration: T1567 Exfiltration Over Web Service (tactic: exfiltration); other candidates: T1048, T1041, T1567.004, T1567.002\n\n## Analyst findings (each verified against retrieved evidence)\n- The attackers used a lateral SMB relay attack, possibly using SMB/Windows Admin Shares and Forced Authentication to gain access to the network. (T1021.002) [flw_apt_smb_05474, flw_apt_c2_08753]\n\n## Verification summary\n- Findings proposed: 1, accepted: 1, rejected: 0",
+ "summary": "On 2026-11-02, a network security incident occurred, involving 4100 alerts across 9 hosts in 3 stages: Lateral-SMB-Relay (15:04:49 to 15:14:53), C2-Heartbeat (15:35:15 to 15:56:39), and HTTPS-Exfiltration (15:43:52 to 15:53:19). Internal hosts that sent attack traffic (possibly compromised): 172.20.10.10, 172.20.10.11. External servers that received traffic from internal hosts (possible attacker infrastructure): 203.0.113.88, 198.51.100.25. Internal hosts that received attack traffic (targets): 172.20.10.14, 172.20.10.17, 172.20.10.29, 172.20.10.36, 172.20.10.15.",
+ "summary_withheld_reason": null,
+ "factual_summary": "On 2026-11-02, 4100 alerts in 3 stages, in time order: Lateral-SMB-Relay (15:04:49 to 15:14:53, 100 alerts); C2-Heartbeat (15:35:15 to 15:56:39, 2000 alerts); HTTPS-Exfiltration (15:43:52 to 15:53:19, 2000 alerts). Internal hosts that sent attack traffic (possibly compromised): 172.20.10.10, 172.20.10.11. External servers that received traffic from internal hosts (possible attacker infrastructure): 203.0.113.88, 198.51.100.25. Internal hosts that received attack traffic (targets): 172.20.10.14, 172.20.10.17, 172.20.10.29, 172.20.10.36 and 1 more.",
+ "host_roles": {
+  "compromised": {
+   "hosts": [
+    "172.20.10.10",
+    "172.20.10.11"
+   ],
+   "total": 2
+  },
+  "infra": {
+   "hosts": [
+    "203.0.113.88",
+    "198.51.100.25"
+   ],
+   "total": 2
+  },
+  "attackers": {
+   "hosts": [],
+   "total": 0
+  },
+  "victims": {
+   "hosts": [
+    "172.20.10.14",
+    "172.20.10.17",
+    "172.20.10.29",
+    "172.20.10.36",
+    "172.20.10.15"
+   ],
+   "total": 5
+  }
+ },
+ "timeline": [
+  {
+   "attack_class": "Lateral-SMB-Relay",
+   "alert_count": 100,
+   "first_seen": "2026-11-02T15:04:49.778564",
+   "last_seen": "2026-11-02T15:14:53.921692",
+   "sources": [
+    "172.20.10.10"
+   ],
+   "distinct_sources": 1,
+   "targets": [
+    "172.20.10.14",
+    "172.20.10.17",
+    "172.20.10.29",
+    "172.20.10.36",
+    "172.20.10.15"
+   ],
+   "distinct_targets": 5,
+   "first_flow_id": "flw_apt_smb_05474",
+   "last_flow_id": "flw_apt_smb_06835"
+  },
+  {
+   "attack_class": "C2-Heartbeat",
+   "alert_count": 2000,
+   "first_seen": "2026-11-02T15:35:15.526534",
+   "last_seen": "2026-11-02T15:56:39.972266",
+   "sources": [
+    "172.20.10.10",
+    "172.20.10.11"
+   ],
+   "distinct_sources": 2,
+   "targets": [
+    "203.0.113.88",
+    "198.51.100.25"
+   ],
+   "distinct_targets": 2,
+   "first_flow_id": "flw_apt_c2_08753",
+   "last_flow_id": "flw_apt_c2_00643"
+  },
+  {
+   "attack_class": "HTTPS-Exfiltration",
+   "alert_count": 2000,
+   "first_seen": "2026-11-02T15:43:52.019064",
+   "last_seen": "2026-11-02T15:53:19.829900",
+   "sources": [
+    "172.20.10.11",
+    "172.20.10.10"
+   ],
+   "distinct_sources": 2,
+   "targets": [
+    "203.0.113.88",
+    "198.51.100.25"
+   ],
+   "distinct_targets": 2,
+   "first_flow_id": "flw_apt_exfil_06163",
+   "last_flow_id": "flw_apt_exfil_09798"
+  }
+ ],
+ "cross_stage_hosts": [
+  {
+   "host_ip": "172.20.10.10",
+   "pattern": "source_in_every_stage",
+   "stages": [
+    {
+     "stage": "Lateral-SMB-Relay",
+     "role": "source",
+     "alerts": 100
+    },
+    {
+     "stage": "C2-Heartbeat",
+     "role": "source",
+     "alerts": 1042
+    },
+    {
+     "stage": "HTTPS-Exfiltration",
+     "role": "source",
+     "alerts": 958
+    }
+   ]
+  },
+  {
+   "host_ip": "203.0.113.88",
+   "pattern": "target_in_every_stage",
+   "stages": [
+    {
+     "stage": "C2-Heartbeat",
+     "role": "target",
+     "alerts": 1005
+    },
+    {
+     "stage": "HTTPS-Exfiltration",
+     "role": "target",
+     "alerts": 1013
+    }
+   ]
+  },
+  {
+   "host_ip": "172.20.10.11",
+   "pattern": "source_in_every_stage",
+   "stages": [
+    {
+     "stage": "C2-Heartbeat",
+     "role": "source",
+     "alerts": 958
+    },
+    {
+     "stage": "HTTPS-Exfiltration",
+     "role": "source",
+     "alerts": 1042
+    }
+   ]
+  },
+  {
+   "host_ip": "198.51.100.25",
+   "pattern": "target_in_every_stage",
+   "stages": [
+    {
+     "stage": "C2-Heartbeat",
+     "role": "target",
+     "alerts": 995
+    },
+    {
+     "stage": "HTTPS-Exfiltration",
+     "role": "target",
+     "alerts": 987
+    }
+   ]
+  }
+ ],
+ "attack_matches": {
+  "Lateral-SMB-Relay": [
+   {
+    "id": "T1021.002",
+    "name": "SMB/Windows Admin Shares",
+    "tactics": [
+     "lateral-movement"
+    ],
+    "score": 0.758
+   },
+   {
+    "id": "T1187",
+    "name": "Forced Authentication",
+    "tactics": [
+     "credential-access"
+    ],
+    "score": 0.717
+   },
+   {
+    "id": "T1557.001",
+    "name": "Name Resolution Poisoning and SMB Relay",
+    "tactics": [
+     "credential-access",
+     "collection"
+    ],
+    "score": 0.71
+   },
+   {
+    "id": "T1056.003",
+    "name": "Web Portal Capture",
+    "tactics": [
+     "collection",
+     "credential-access"
+    ],
+    "score": 0.694
+   },
+   {
+    "id": "T1563",
+    "name": "Remote Service Session Hijacking",
+    "tactics": [
+     "lateral-movement"
+    ],
+    "score": 0.687
+   }
+  ],
+  "C2-Heartbeat": [
+   {
+    "id": "T1071",
+    "name": "Application Layer Protocol",
+    "tactics": [
+     "command-and-control"
+    ],
+    "score": 0.692
+   },
+   {
+    "id": "T1568",
+    "name": "Dynamic Resolution",
+    "tactics": [
+     "command-and-control"
+    ],
+    "score": 0.691
+   },
+   {
+    "id": "T1071.001",
+    "name": "Web Protocols",
+    "tactics": [
+     "command-and-control"
+    ],
+    "score": 0.675
+   },
+   {
+    "id": "T1102.002",
+    "name": "Bidirectional Communication",
+    "tactics": [
+     "command-and-control"
+    ],
+    "score": 0.666
+   },
+   {
+    "id": "T1102.003",
+    "name": "One-Way Communication",
+    "tactics": [
+     "command-and-control"
+    ],
+    "score": 0.663
+   }
+  ],
+  "HTTPS-Exfiltration": [
+   {
+    "id": "T1567",
+    "name": "Exfiltration Over Web Service",
+    "tactics": [
+     "exfiltration"
+    ],
+    "score": 0.861
+   },
+   {
+    "id": "T1048",
+    "name": "Exfiltration Over Alternative Protocol",
+    "tactics": [
+     "exfiltration"
+    ],
+    "score": 0.784
+   },
+   {
+    "id": "T1041",
+    "name": "Exfiltration Over C2 Channel",
+    "tactics": [
+     "exfiltration"
+    ],
+    "score": 0.777
+   },
+   {
+    "id": "T1567.004",
+    "name": "Exfiltration Over Webhook",
+    "tactics": [
+     "exfiltration"
+    ],
+    "score": 0.776
+   },
+   {
+    "id": "T1567.002",
+    "name": "Exfiltration to Cloud Storage",
+    "tactics": [
+     "exfiltration"
+    ],
+    "score": 0.758
+   }
+  ]
+ },
+ "findings": [
+  {
+   "claim": "The attackers used a lateral SMB relay attack, possibly using SMB/Windows Admin Shares and Forced Authentication to gain access to the network.",
+   "flow_ids": [
+    "flw_apt_smb_05474",
+    "flw_apt_c2_08753"
+   ],
+   "technique_id": "T1021.002"
+  }
+ ],
+ "rejected_findings": []
+}

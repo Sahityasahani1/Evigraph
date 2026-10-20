@@ -7,6 +7,7 @@ export const PLAIN = {
   'Lateral Movement': { title: 'Spreading inside', icon: 'spread', what: 'Moving from one machine to others inside the network.' },
   'Command and Control': { title: 'Phoning home', icon: 'phone', what: `The infected machine keeps checking in with the attacker for orders (${g('c2', 'C2')}).` },
   'Exfiltration': { title: 'Stealing data', icon: 'steal', what: `Large amounts of data are sent out of the network (${g('exfil', 'exfiltration')}).` },
+  'Exfil & Impact': { title: 'Reaching the goal', icon: 'steal', what: 'The final stage: stealing data or disrupting a service.' },
 };
 export const plainOf = t => PLAIN[t] ?? { title: t, icon: 'scout', what: 'This step was detected by the analysis engine.' };
 
@@ -28,12 +29,13 @@ export const confWord = c => (c >= 0.8 ? 'High' : c >= 0.6 ? 'Medium' : 'Low');
 export const affected = inc => { const ids = new Set(inc.stages.flatMap(s => [s.src, s.dst])); return inc.hosts.filter(h => ids.has(h.id) && h.zone !== 'EXTERNAL'); };
 
 export function headline(inc) {
-  const byId = new Map(inc.hosts.map(h => [h.id, h])), s0 = inc.stages[0], src = byId.get(s0.src), dst = byId.get(s0.dst);
+  if (!inc.stages?.length) return `Incident ${inc.incident_id ?? ''} has no recorded attack stages.`;
+  const byId = new Map((inc.hosts || []).map(h => [h.id, h])), s0 = inc.stages[0], src = byId.get(s0.src), dst = byId.get(s0.dst);
   const who = src?.zone === 'EXTERNAL' ? `An outside attacker (${src.ip})` : `A machine inside the network (${src?.ip ?? s0.src})`;
   const more = affected(inc).length - 1, ex = inc.stages.find(s => /exfil/i.test(s.tactic));
   return `${who} targeted the ${(dst?.role ?? 'first machine').toLowerCase()}` +
     (more > 0 ? ` and then reached ${more} more machine${more > 1 ? 's' : ''}` : '') +
-    (ex ? (ex.observed ? ', and data was sent out of the network.' : ', and data may have been sent out.') : '.');
+    (ex ? (/impact/i.test(ex.tactic) ? (ex.observed ? ', and the attack reached its final stage (data theft or disruption).' : ', and the attack may have reached its final stage.') : (ex.observed ? ', and data was sent out of the network.' : ', and data may have been sent out.')) : '.');
 }
 
 // What the attacker has done to each machine by replay time t. Inferred steps never count as confirmed.
@@ -45,6 +47,7 @@ export function hostStatus(inc, t) {
     if (/Reconnaissance|Credential|Initial/.test(s.tactic)) up(s.dst, 'targeted');
     else if (/Lateral/.test(s.tactic)) { up(s.src, 'compromised'); up(s.dst, s.observed ? 'compromised' : 'targeted'); }
     else if (/Command/.test(s.tactic)) up(s.src, 'compromised');
+    else if (/Impact/.test(s.tactic)) { up(s.src, 'compromised'); up(s.dst, 'compromised'); }
     else if (/Exfil/.test(s.tactic)) up(s.src, s.observed ? 'stolen' : 'compromised');
   }
   inc.hosts.forEach(h => { out[h.id] ??= 'safe'; });
