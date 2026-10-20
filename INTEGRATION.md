@@ -42,6 +42,15 @@ python -m src.agent.api INC-0009 --incidents data\raw\member3_benchmark_test_inc
 Optional flags: `--flows PATH`, `--out reports`, `--model NAME`.
 Defaults: flows `data/raw/processed/benchmark_test_flows.parquet`, incidents `data/standin/incident_cases.json`.
 
+### Mock mode (no Ollama, no data files)
+
+To build the UI without running the model, change one import line:
+
+    from src.agent.mock import load_agent, list_incidents, investigate   # mock
+    # from src.agent.api import load_agent, list_incidents, investigate  # real
+
+The mock serves saved reports from `src/agent/mock_data/` (currently INC-0009). The response shape is identical. `load_agent` accepts and ignores the same arguments.
+
 ## 3. What `investigate()` returns
 
 | Key | What it is | How to show it |
