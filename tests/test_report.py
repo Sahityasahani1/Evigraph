@@ -128,3 +128,20 @@ def test_finding_with_invented_number_is_rejected():
 def test_report_lists_role_changes_from_the_alerts():
     r = generate_report(make_agent(NO_FINDINGS), "INC-001")
     assert "10.0.0.5: target in" in r["report"] and "then source in" in r["report"]
+
+
+
+def test_report_has_code_written_summary_and_roles():
+    r = generate_report(make_agent(NO_FINDINGS), "INC-001")
+    assert "## Summary of the alerts (computed by code)" in r["report"]
+    assert "10.0.0.5" in r["factual_summary"] and "203.0.113.50" in r["factual_summary"]
+
+
+def test_finding_calling_attacker_server_compromised_is_rejected():
+    r = generate_report(make_agent(one("The host 203.0.113.50 was possibly compromised.")), "INC-001")
+    assert not r["accepted"] and "compromised" in r["rejected"][0]["problems"][0]
+
+
+def test_finding_about_an_internal_sender_may_say_compromised():
+    r = generate_report(make_agent(one("The host 10.0.0.5 was possibly compromised.")), "INC-001")
+    assert r["accepted"]

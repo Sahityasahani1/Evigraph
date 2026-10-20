@@ -1,6 +1,8 @@
-"""Verified reporting: the LLM proposes findings and a summary, code checks every one, code writes the report."""
+"""Verified reporting: code computes the facts and host roles, the LLM proposes findings and a narrative,
+code checks every model claim against the evidence, and code writes the report."""
 import json
 import re
+from ipaddress import ip_address, ip_network
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -8,6 +10,21 @@ IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 FLOW_RE = re.compile(r"\bflw_\d+\b")
 TECH_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
 NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+
+# Python treats documentation ranges (203.0.113.x, 198.51.100.x) as "private", so list the real private ranges.
+PRIVATE = [ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
+
+ROLE_LABELS = [
+    ("compromised", "Internal hosts that sent attack traffic (possibly compromised)"),
+    ("infra", "External servers that received traffic from internal hosts (possible attacker infrastructure)"),
+    ("attackers", "External hosts that sent attack traffic"),
+    ("victims", "Internal hosts that received attack traffic (targets)"),
+]
+
+MEANING = {
+    "target_then_source": "possible compromise",
+    "source_then_target": "possible callback or reused infrastructure",
+}
 
 
 class Finding(BaseModel):
@@ -32,22 +49,73 @@ Rules:
 - flow_ids: one or more flow IDs copied exactly from the data (first_flow_id, last_flow_id, or top_alerts_by_risk). Never invent IDs.
 - technique_id: ONE ATT&CK ID copied from attack_matches for the stage the claim is about, or null.
 - Mention IP addresses only if they appear in the data.
-- cross_stage_hosts lists hosts that appear in several stages, with a pattern. If a host has pattern target_then_source, include a finding that it was possibly compromised. Call a host a target only if the data lists it as a target, and a source only if the data lists it as a source.
+- host_roles lists hosts by role. Only call a host "possibly compromised" if it is listed under host_roles.compromised. Hosts under host_roles.infra are attacker servers, never victims or compromised hosts. Hosts under host_roles.victims were targeted.
+- cross_stage_hosts lists hosts that appear in several stages, with a pattern. If a host has pattern target_then_source, include a finding that it was possibly compromised.
 - Do not repeat a claim."""
 
 SUMMARY_PROMPT = """You write an executive summary of a network security incident for a manager.
 Return JSON only: {"summary": str}
 
 Rules:
-- One sentence per attack stage, in time order, using each stage's OWN start and end times from the timeline. Never use the whole incident's time span for a single stage.
-- Then one sentence on which host matters most and why. Base it only on the section "Hosts whose role changed across stages": call a host a target only if the report lists it as a target, and a source only if the report lists it as a source. Never invent roles such as "initial target".
+- One sentence per attack stage, in time order. Copy timestamps exactly as written in the report, or leave them out. Never shorten or round them.
+- Then one sentence about the hosts, based only on the section "Host roles": hosts listed as attacker infrastructure are attacker servers (never victims); hosts listed as possibly compromised are internal machines that sent attack traffic.
 - Use only facts, names and numbers that appear in the report you are given. Add nothing new.
 - Say "possibly" for anything that is an inference."""
 
-MEANING = {
-    "target_then_source": "possible compromise",
-    "source_then_target": "possible callback or reused infrastructure",
-}
+
+def _internal(ip: str) -> bool:
+    try:
+        addr = ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr in net for net in PRIVATE)
+
+
+def compute_roles(alerts) -> dict:
+    """Work out who played which role, from the alerts only (no model involved)."""
+    roles = {"compromised": {}, "infra": {}, "attackers": {}, "victims": {}}
+
+    def bump(key, host):
+        roles[key][host] = roles[key].get(host, 0) + 1
+
+    for a in alerts:
+        src_in, dst_in = _internal(a.src_ip), _internal(a.dst_ip)
+        bump("compromised" if src_in else "attackers", a.src_ip)
+        if dst_in:
+            bump("victims", a.dst_ip)
+        elif src_in:
+            bump("infra", a.dst_ip)
+    return roles
+
+
+def _top(counts: dict, n: int = 8) -> dict:
+    ranked = sorted(counts, key=lambda h: (-counts[h], h))
+    return {"hosts": ranked[:n], "total": len(ranked)}
+
+
+def _hosts_text(hosts, distinct):
+    text = ", ".join(hosts)
+    extra = distinct - len(hosts)
+    return f"{text} and {extra} more" if extra > 0 else text
+
+
+def factual_summary(briefing) -> str:
+    """A short summary written by code. It cannot mix up directions because it only reads computed data."""
+    inc = briefing["incident"]
+    roles = briefing["host_roles"]
+    stages = inc["stages_in_time_order"]
+    seq = "; ".join(
+        f"{s['attack_class']} ({s['first_seen'][11:19]} to {s['last_seen'][11:19]}, {s['alert_count']} alerts)"
+        for s in stages
+    )
+    plural = "s" if len(stages) != 1 else ""
+    text = (f"On {inc['start'][:10]}, {inc['alert_count']} alerts in {len(stages)} stage{plural}, "
+            f"in time order: {seq}.")
+    for key, label in ROLE_LABELS:
+        r = roles[key]
+        if r["total"]:
+            text += f" {label}: {_hosts_text(r['hosts'][:4], r['total'])}."
+    return text
 
 
 def _numbers(text: str) -> set[str]:
@@ -75,7 +143,7 @@ def text_problems(text, tools, known_ips, source_text, flow_ids=(), technique_id
     return problems
 
 
-def validate_findings(findings, tools, known_ips, source_text=""):
+def validate_findings(findings, tools, known_ips, source_text="", compromised=None):
     accepted, rejected = [], []
     for f in findings:
         problems = text_problems(
@@ -83,6 +151,11 @@ def validate_findings(findings, tools, known_ips, source_text=""):
         )
         if not f.flow_ids:
             problems.insert(0, "cites no flow_id")
+        if compromised is not None and "compromis" in f.claim.lower():
+            wrong = sorted({ip for ip in IP_RE.findall(f.claim) if ip not in compromised})
+            if wrong:
+                problems.append("calls hosts compromised that never sent attack traffic "
+                                f"from inside the network: {wrong}")
         if problems:
             rejected.append({"finding": f, "problems": problems})
         else:
@@ -94,20 +167,19 @@ def _band(score: float) -> str:
     return "HIGH" if score >= 0.8 else "MEDIUM" if score >= 0.5 else "LOW"
 
 
-def _hosts_text(hosts, distinct):
-    text = ", ".join(hosts)
-    extra = distinct - len(hosts)
-    return f"{text} and {extra} more" if extra > 0 else text
-
-
 def build_report(briefing, accepted, rejected, summary=None, summary_note=None) -> str:
     inc = briefing["incident"]
     stages = inc["stages_in_time_order"]
+    roles = briefing.get("host_roles")
     L = [f"# Incident report: {inc['incident_id']}"]
+    if roles:
+        L += ["", "## Summary of the alerts (computed by code)", factual_summary(briefing)]
     if summary:
-        L += ["", "## Executive summary (model-written, verified)", summary]
+        L += ["", "## Executive summary (model-written, verified)",
+              "AI-written: every ID, IP and number is checked against the data, "
+              "but roles and relationships can still be wrong.", summary]
     elif summary_note:
-        L += ["", "## Executive summary", f"- Withheld: {summary_note}"]
+        L += ["", "## Executive summary (model-written)", f"- Withheld: {summary_note}"]
 
     L += ["", "## Overview"]
     L.append(f"- Severity: {inc['severity_score']} ({_band(inc['severity_score'])}; "
@@ -120,7 +192,7 @@ def build_report(briefing, accepted, rejected, summary=None, summary_note=None) 
         src = _hosts_text(s["sources"], s.get("distinct_sources", len(s["sources"])))
         dst = _hosts_text(s["targets"], s.get("distinct_targets", len(s["targets"])))
         L.append(f"{i}. {s['first_seen']} to {s['last_seen']}: {s['attack_class']}, "
-                 f"{s['alert_count']} alerts, from {src} to {dst} "
+                 f"{s['alert_count']} alerts, sources (senders): {src}; targets (receivers): {dst} "
                  f"[{s['first_flow_id']}, {s['last_flow_id']}]")
 
     sources = {h["host_ip"] for h in inc["top_alert_sources"]}
@@ -138,19 +210,26 @@ def build_report(briefing, accepted, rejected, summary=None, summary_note=None) 
     changed = [h for h in inc.get("cross_stage_hosts", []) if h["pattern"] in MEANING]
     if changed:
         for h in changed:
-            roles = ", then ".join(f"{s['role']} in {s['stage']}" for s in h["stages"])
-            L.append(f"- {h['host_ip']}: {roles} ({MEANING[h['pattern']]})")
+            how = ", then ".join(f"{s['role']} in {s['stage']}" for s in h["stages"])
+            L.append(f"- {h['host_ip']}: {how} ({MEANING[h['pattern']]})")
     else:
         L.append("- None: no host changed role between stages.")
+
+    if roles:
+        L += ["", "## Host roles (computed from the alerts)"]
+        for key, label in ROLE_LABELS:
+            r = roles[key]
+            if r["total"]:
+                L.append(f"- {label}: {_hosts_text(r['hosts'], r['total'])}")
 
     L += ["", "## Key hosts"]
     for ip, s in briefing["host_summaries"].items():
         if "error" in s:
             continue
-        L.append(f"- {ip}: source of {s['flows_as_source']} flows "
-                 f"({s['unique_destination_hosts']} destination hosts, "
-                 f"{s['unique_destination_ports']} destination ports), "
-                 f"destination of {s['flows_as_destination']} flows")
+        L.append(f"- {ip}: sent {s['flows_as_source']} flows "
+                 f"(to {s['unique_destination_hosts']} hosts on "
+                 f"{s['unique_destination_ports']} ports) and received "
+                 f"{s['flows_as_destination']} flows")
 
     L += ["", "## ATT&CK mapping (best search match per stage)"]
     for cls, res in briefing["attack_matches"].items():
@@ -204,6 +283,9 @@ def generate_report(agent, incident_id: str) -> dict:
     if err:
         return {"report": None, "error": err, "tool_calls": calls}
 
+    roles = compute_roles(tools.incidents[incident_id].alerts)
+    briefing["host_roles"] = {k: _top(v) for k, v in roles.items()}
+
     source = json.dumps(briefing, separators=(",", ":"), default=str)
     resp = agent.chat(
         model=agent.model,
@@ -219,7 +301,7 @@ def generate_report(agent, incident_id: str) -> dict:
         findings, parse_error = [], True
 
     known_ips = set(tools.incidents[incident_id].hosts)
-    accepted, rejected = validate_findings(findings, tools, known_ips, source)
+    accepted, rejected = validate_findings(findings, tools, known_ips, source, set(roles["compromised"]))
 
     base = build_report(briefing, accepted, rejected)
     summary, summary_note = _summarise(agent, base, known_ips)
@@ -227,6 +309,7 @@ def generate_report(agent, incident_id: str) -> dict:
         "report": build_report(briefing, accepted, rejected, summary, summary_note),
         "error": None, "accepted": accepted, "rejected": rejected,
         "summary": summary, "summary_note": summary_note,
+        "factual_summary": factual_summary(briefing), "host_roles": briefing["host_roles"],
         "parse_error": parse_error, "tool_calls": calls,
     }
 
