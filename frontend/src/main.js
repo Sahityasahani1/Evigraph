@@ -1,7 +1,7 @@
 import './styles.css';
 import { listIncidents, getIncident, getReport } from './api/client.js';
 import { USE_MOCK, colorOf, css } from './config.js';
-import { clockAt, esc } from './utils.js';
+import { clockAt, esc, formatReportJson, formatReportMarkdown, downloadFile } from './utils.js';
 import { NetworkScene } from './scene/NetworkScene.js';
 import { icon } from './ui/icons.js';
 import { hostStatus, activeStage } from './ui/story.js';
@@ -75,9 +75,31 @@ async function setView(v) {
   state.view = v;
   if (v === 'overview') { state.sel = null; scene.setSelection(null); }
   render();
-  if (v === 'report' && !state.report) {
+  if (v === 'report' && (!state.report || state.report.incident_id !== state.inc?.incident_id)) {
     try { state.report = await getReport(state.inc.incident_id); } catch (e) { $('detail').innerHTML = `<div class="mu">Report failed: ${esc(e.message)}</div>`; return; }
     if (state.view === 'report') render();
+  }
+}
+async function handleReportDownload(format) {
+  try {
+    if (!state.inc) throw new Error('No incident selected');
+    if (!state.report || state.report.incident_id !== state.inc.incident_id) {
+      state.report = await getReport(state.inc.incident_id);
+    }
+    const inc = state.inc;
+    const r = state.report;
+    const iid = inc.incident_id || r.incident_id || 'incident';
+    if (format === 'json') {
+      const jsonStr = formatReportJson(r);
+      downloadFile(`${iid}_report.json`, jsonStr, 'application/json');
+    } else if (format === 'md') {
+      const mdStr = formatReportMarkdown(inc, r);
+      downloadFile(`${iid}_report.md`, mdStr, 'text/markdown;charset=utf-8');
+    } else {
+      throw new Error(`Unsupported export format: ${format}`);
+    }
+  } catch (err) {
+    showError(new Error(`Download failed: ${err.message}`));
   }
 }
 const setPlay = p => { state.play = p; paintPlay(); };
@@ -88,6 +110,8 @@ const jump = dir => {
 };
 
 document.addEventListener('click', e => {
+  const dl = e.target.closest('[data-download]');
+  if (dl) { handleReportDownload(dl.dataset.download); return; }
   const copy = e.target.closest('[data-copy]');
   if (copy) { navigator.clipboard?.writeText(copy.dataset.copy); copy.innerHTML = icon('check', 12) + ' Copied'; return; }
   const view = e.target.closest('#rail [data-view]'); if (view) { setView(view.dataset.view); return; }

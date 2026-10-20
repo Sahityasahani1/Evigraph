@@ -21,6 +21,8 @@ export const TIPS = {
   tour: ['Guided tour', 'A 30-second walkthrough of this screen.', 'Fastest way to learn what each part does.'],
   v_overview: ['Overview', 'Summary of the incident, affected machines and a guide to reading the map.', 'The starting point for any investigation.'],
   v_report: ['Verified report', 'A written report where every sentence cites evidence IDs that a validator checks.', 'Stops unsupported or invented claims from reaching the final report.'],
+  download_json: ['Download JSON Report', 'Exports the complete machine-readable report object including citations, verification stats, and hashes.', 'Use for SIEM integration, pipeline ingest, or archival.'],
+  download_md: ['Download Markdown Report', 'Exports a formatted human-readable forensic threat briefing in GitHub-flavored Markdown.', 'Ready to share with leadership, auditors, or incident response teams.'],
   courtroom: ['Courtroom (planned)', 'Will check whether the evidence would stand up: integrity, custody and reproducibility.', 'Makes findings defensible in an audit or legal setting.'],
   containment: ['Containment (planned)', 'Will suggest which machines and ports to block first.', 'Moves from understanding the attack to stopping it.'],
   privacy: ['Privacy proof (planned)', 'Will show that addresses were pseudonymized and no raw traffic left the system.', 'Shows the investigation respects privacy rules.'],
