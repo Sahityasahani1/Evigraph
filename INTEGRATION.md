@@ -1,111 +1,189 @@
-# Integration guide: LLM Forensic Analyst Agent (Member 3)
+# Integration guide for the frontend (Member 4)
 
-This agent reads detector alerts and flow data, then produces an incident report in which every model claim is checked against evidence. The frontend only needs **one function**: `investigate()` in `src/agent/api.py`.
+The LLM Forensic Analyst Agent turns detector alerts into an incident report. The frontend needs
+**three functions** from `src/agent/api.py`. There is also a **mock mode** so you can build the UI
+today without Ollama or any data files.
 
-## 1. Requirements
+---
 
-- Python 3.10+ with the project's `.venv` active, and `pip install -r requirements.txt`
-- [Ollama](https://ollama.com) running locally, with these models pulled:
+## 1. Quick start with mock mode (no setup)
+
+Change one import line. Everything else in your code stays the same when you switch to the real agent.
+
+```python
+from src.agent.mock import load_agent, list_incidents, investigate    # mock: instant, no Ollama
+# from src.agent.api import load_agent, list_incidents, investigate   # real agent
+
+agent = load_agent()
+incidents = list_incidents(agent)            # list for the incident picker
+result = investigate(agent, "INC-0009")      # dict for the report view
+```
+
+The mock serves saved real reports from `src/agent/mock_data/` (INC-0009 and INC-0001). The response
+shape is identical to the real agent. For an unknown ID the mock returns `{"incident_id": ..., "error": "..."}`.
+
+For the exact shape of a full response, open `src/agent/mock_data/INC-0009.json`.
+
+---
+
+## 2. The real agent
+
+### Requirements
+- Python 3.10+, the project `.venv`, and `pip install -r requirements.txt`
+- [Ollama](https://ollama.com) running locally, with the models pulled:
 ```
   ollama pull llama3.2:3b
   ollama pull nomic-embed-text
 ```
-  The default model is `llama3.2:3b`. The optional model `llama3.1:8b` is slower and not clearly better (`ollama pull llama3.1:8b`).
 - The ATT&CK index. If it is missing, build it once:
 ```
   python -c "from src.agent.attack_rag import build_index; build_index()"
 ```
+- Data files (git-ignored, ask Member 2/3 for them):
+  - flows: `data/raw/processed/benchmark_test_flows.parquet`
+  - incidents: `data/raw/member3_benchmark_test_incidents.json`
 
-## 2. How to call it
-
+### Usage
 ```python
 from src.agent.api import load_agent, list_incidents, investigate
 
 agent = load_agent(
     flows_path="data/raw/processed/benchmark_test_flows.parquet",
     incidents_path="data/raw/member3_benchmark_test_incidents.json",
-    model="llama3.2:3b",
+    model="llama3.2:3b",          # optional; this is the default
 )
-
-list_incidents(agent)                 # incidents available to investigate
-result = investigate(agent, "INC-0009")   # JSON-serialisable dict
+list_incidents(agent)
+result = investigate(agent, "INC-0009")
 ```
 
-Load the agent **once** and reuse it. `investigate()` takes about a minute on the 3B model, so run it in a background thread or task and show a loading state.
+Rules for the UI:
+- **Load the agent once** at startup and reuse it.
+- **`investigate()` takes about 1 minute** on the 3B model. Run it in a background thread or task and show a loading state.
+- **Run one investigation at a time.** Ollama is a single local model, so queue requests.
+- If `result["error"]` is not `None`, show the message and stop.
 
-Command line (also writes `reports/<id>.json` and `reports/<id>.md`):
-
+### Command line (writes `reports/<id>.json` and `reports/<id>.md`)
 ```
 python -m src.agent.api INC-0009 --incidents data\raw\member3_benchmark_test_incidents.json
 ```
-
 Optional flags: `--flows PATH`, `--out reports`, `--model NAME`.
-Defaults: flows `data/raw/processed/benchmark_test_flows.parquet`, incidents `data/standin/incident_cases.json`.
 
-### Mock mode (no Ollama, no data files)
+---
 
-To build the UI without running the model, change one import line:
+## 3. `list_incidents(agent)`: for the incident picker
 
-    from src.agent.mock import load_agent, list_incidents, investigate   # mock
-    # from src.agent.api import load_agent, list_incidents, investigate  # real
+Returns a list, most severe first:
+```json
+[{"incident_id": "INC-0009", "severity_score": 0.9194, "alert_count": 4100, "host_count": 9,
+  "classes": {"C2-Heartbeat": 2000, "HTTPS-Exfiltration": 2000, "Lateral-SMB-Relay": 100}}]
+```
+Severity bands: **>= 0.8 high, >= 0.5 medium, below that low**.
 
-The mock serves saved reports from `src/agent/mock_data/` (currently INC-0009). The response shape is identical. `load_agent` accepts and ignores the same arguments.
+---
 
-## 3. What `investigate()` returns
+## 4. `investigate(agent, incident_id)`: what you get back
 
-| Key | What it is | How to show it |
-|---|---|---|
-| `incident_id` | The incident ID | Header |
-| `error` | `None`, or a message if the incident was not found | Show the error and stop |
-| `severity_score`, `start`, `end`, `alert_count`, `host_count` | Overview numbers | Overview card |
-| `factual_summary` | Summary **written by code** from the alerts | **Show first. Reliable.** |
-| `host_roles` | Hosts grouped by role: `compromised`, `infra`, `attackers`, `victims` (each has `hosts` and `total`) | Reliable. Good for a graph or table. |
-| `timeline` | Attack stages in time order, with ranked sources and targets | Reliable |
-| `cross_stage_hosts` | Hosts whose role changed between stages, with a `pattern` | Reliable |
-| `attack_matches` | Top ATT&CK candidates per stage | Reliable. It is a shortlist, not a single answer. |
-| `summary` | Model-written executive summary, or `None` | Show under an **"AI-generated, may contain errors"** label |
-| `summary_withheld_reason` | Why `summary` is `None` (failed verification) | Optional small note |
-| `findings` | Model findings that passed verification (claim, flow IDs, technique ID) | Under the same AI label |
-| `rejected_findings` | Findings that failed verification, with reasons | Optional "rejected" panel |
-| `report_markdown` | The full report as Markdown | Render or offer as download |
+A plain, JSON-serialisable dict.
 
-**Trust rule for the UI:** treat `factual_summary`, `host_roles`, `timeline`, `cross_stage_hosts` and `attack_matches` as authoritative (computed by code). Treat `summary` and `findings` as AI-generated.
+### Reliable fields (computed by code, show prominently)
+| Key | Contents |
+|---|---|
+| `incident_id`, `error` | ID, and `None` unless something went wrong |
+| `severity_score`, `start`, `end`, `alert_count`, `host_count` | Overview. `start` and `end` are ISO timestamps |
+| `factual_summary` | One short paragraph written by code. **Show this first.** |
+| `host_roles` | `{"compromised": {...}, "infra": {...}, "attackers": {...}, "victims": {...}}`. Each value is `{"hosts": [top IPs], "total": N}` |
+| `timeline` | Attack stages in time order. Each stage has `attack_class`, `first_seen`, `last_seen`, `alert_count`, `sources` (senders), `targets` (receivers), `distinct_sources`, `distinct_targets`, `first_flow_id`, `last_flow_id` |
+| `cross_stage_hosts` | Hosts whose role changed between stages: `host_ip`, `pattern`, and `stages` (role per stage). Often empty |
+| `attack_matches` | MITRE ATT&CK candidates per attack class, as `{class: {"matches": [{id, name, tactics}, ...]}}`. A top-5 shortlist, **not one answer** |
 
-Sample response: `reports/INC-0009.json`.
+What the role keys mean:
+- `compromised`: internal hosts that sent attack traffic (possibly compromised)
+- `infra`: external servers that received traffic from internal hosts (possible attacker infrastructure)
+- `attackers`: external hosts that sent attack traffic
+- `victims`: internal hosts that received attack traffic (targets)
 
-## 4. Input contract
+`cross_stage_hosts[].pattern` is `target_then_source` (possible compromise) or `source_then_target`
+(possible callback or reused infrastructure).
 
-- **Incidents file** (`IncidentCases` JSON): incidents, each with alerts (source and destination IP, predicted class, flow ID, timestamp, risk). Exact fields are in `src/agent/contract.py`.
-- The loader drops `BENIGN` alerts and recomputes each incident's host list.
-- **Flows file** (CSV or Parquet): the flow table columns are listed in `FLOW_COLUMNS` in `src/agent/contract.py`. Only `src/agent/flow_store.py` knows these columns.
-- The hidden `label` column is never shown to the agent, to keep evaluation fair.
+### AI-generated fields (show under a clear label)
+| Key | Contents |
+|---|---|
+| `summary` | Model-written executive summary, or `None` if it failed verification |
+| `summary_withheld_reason` | Why `summary` is `None` (for example "contains numbers not in the data") |
+| `findings` | Findings that passed verification: `claim`, `flow_ids`, `technique_id` |
+| `rejected_findings` | Findings that failed verification, with the reasons. Optional panel; see the sample file for the shape |
 
-## 5. Real data
+### Everything else
+| Key | Contents |
+|---|---|
+| `report_markdown` | The whole report as Markdown (render it, or offer it as a download) |
 
-The agent works with Member 2's real incident file (`member3_benchmark_test_incidents.json`) and flows (`benchmark_test_flows.parquet`). His detector output looks label-derived (no misses), so results are optimistic.
+---
 
-For quick tests without his data, `python -m src.agent.make_standin_incidents` builds stand-in incidents into `data/standin/` from the test labels (a "perfect detector"). `data/raw/` and `data/standin/` are git-ignored.
+## 5. How to display it (suggested)
 
-## 6. How the verification works
+1. **Header:** incident ID, severity badge (high / medium / low), time span, alert and host counts.
+2. **Summary card:** `factual_summary`.
+3. **Timeline:** one row per stage with class, time range, alert count, senders and receivers.
+4. **Host roles:** four groups (compromised, attacker infrastructure, attackers, targets), with "and N more" when `total` exceeds the list.
+5. **ATT&CK:** per stage, the first match emphasised and the other candidates shown as alternatives.
+6. **AI section, clearly labelled "AI-generated, may contain errors":** `summary` and `findings`. If `summary` is `None`, show the withheld reason in small text.
+7. **Optional:** a "Rejected claims" panel, and a download button for `report_markdown`.
 
-1. Code gathers the facts: stages, ranked hosts, host roles, and ATT&CK search results.
-2. The LLM proposes findings and a summary.
-3. Code checks every claim: flow IDs and ATT&CK IDs must have been shown to the agent, IPs must belong to the incident, numbers must appear in the data, and "compromised" may only be said of internal hosts that sent attack traffic.
-4. Code builds the final report. Failed claims are listed as rejected, not hidden.
+**Please do not present AI text as fact.** The verifier checks that a claim is grounded in the data the
+agent was shown. It does not check that the claim is correct. "Accepted" does not mean "correct".
 
-## 7. Known limits (please keep these visible in the UI or docs)
+---
 
-- The verifier proves **provenance** (the claim is grounded in data the agent saw). It does **not** prove direction, causality or correctness. "Accepted" does not mean "correct". This is why model text is labelled AI-generated.
-- The 3B model can still pick a weak flow as evidence or word a role loosely. The 8B model is not clearly better.
-- ATT&CK mapping is a shortlist. Vague classes (Backdoor, Fuzzers, Exploits) map poorly, so look at the top 5, not only the first.
-- Member 2's incidents are grouped by dominant class, which splits multi-stage attacks. For example, the APT attack is split across INC-0008 and INC-0009, so the role-change section is empty for INC-0009.
-- Flow IDs in the dataset encode the label (a leak risk). Opaque IDs would be better.
-- The data contains 200 BENIGN alerts (dropped by the loader) and `src_port` = 0 in places.
+## 6. Optional: wrap it in an HTTP endpoint
 
-## 8. Tests
+The repo does not include a web server. If your frontend needs HTTP, this FastAPI sketch is an example
+only and is untested:
+
+```python
+from fastapi import FastAPI
+from src.agent.api import load_agent, list_incidents, investigate
+
+app = FastAPI()
+agent = load_agent("data/raw/processed/benchmark_test_flows.parquet",
+                   "data/raw/member3_benchmark_test_incidents.json")
+
+@app.get("/incidents")
+def incidents():
+    return list_incidents(agent)
+
+@app.get("/incidents/{incident_id}")
+def incident(incident_id: str):
+    return investigate(agent, incident_id)
+```
+Because `investigate` takes about a minute, either run it in a worker or cache results per incident ID.
+
+---
+
+## 7. Known limits (keep these visible)
+
+- The verifier proves provenance, not direction or correctness. For example, a claim that an attacker server was "targeted" passed until a specific rule was added. See `docs/agent_eval.md`.
+- The 3B model usually proposes only one finding per incident. The 8B model (`--model llama3.1:8b`) gives more but is several times slower.
+- ATT&CK mapping is a shortlist. Vague classes (Backdoor, Fuzzers, Exploits) map poorly.
+- Member 2's incidents are grouped by dominant class, which splits multi-stage attacks. The APT attack is split across INC-0008 and INC-0009, so `cross_stage_hosts` is empty for INC-0009.
+- Member 2's detector output looks label-derived, so results are optimistic.
+
+---
+
+## 8. Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Connection refused / cannot reach Ollama | Start Ollama (open the Ollama app, or run `ollama serve`) |
+| `404 model not found` | `ollama pull llama3.2:3b` (and `nomic-embed-text`) |
+| Missing ATT&CK index error | `python -c "from src.agent.attack_rag import build_index; build_index()"` |
+| File not found for flows or incidents | Check the paths in section 2. These files are git-ignored |
+| `error` says the incident is unknown | Use an ID from `list_incidents()` |
+| Want to build the UI without any of this | Use mock mode (section 1) |
+
+## 9. Tests
 
 ```
 python -m pytest tests -q
 ```
-
-Expected: **83 passed** (a real-file test is skipped if the data is absent).
+Expected: **102 passed** (a real-file test is skipped if the data files are absent).
