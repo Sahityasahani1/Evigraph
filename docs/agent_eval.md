@@ -18,6 +18,7 @@ The code-computed sections are the reliable part. The model's summary and findin
 - Models: `llama3.2:3b` (default) and `llama3.1:8b` (comparison), temperature 0, seed 0, context 8192.
 - One run per incident (temperature 0 with a fixed seed gives near-identical repeats).
 - Tests: 102 unit tests, including 6 prompt-injection tests.
+- Reproduce the ablation: `python -m src.agent.ablation [--model NAME] [--ids ...] [--limit N]`.
 
 ## Results
 
@@ -26,6 +27,7 @@ The code-computed sections are the reliable part. The model's summary and findin
 | 3B, all incidents | 9 | 9 (1 per incident) | 0 | 1 (INC-0008) |
 | 8B, before the role-direction rule | 3 | 15 | 0 | 0 |
 | 8B, with the role-direction rule, INC-0009 | 1 | 5 | 2 | 0 |
+| 8B, with the role-direction rule, INC-0008 and INC-0001 | 2 | 10 | 0 | 0 |
 
 - **3B:** the model proposed only one finding per incident although the prompt asks for 3 to 6, so recall is low.
   For INC-0008 its summary contained the number 13, which is not in the data. The validator withheld it and the
@@ -37,6 +39,9 @@ The code-computed sections are the reliable part. The model's summary and findin
   - A rule was added: attacker-side hosts may not be called targets or victims. On re-run both claims were
     rejected, and the 3 accepted claims are correct.
   - Faithfulness (claims that satisfy every rule) was 60% without the validator and 100% of shipped claims with it.
+- **8B, INC-0008 and INC-0001 (rule in place):** 10 claims proposed, none rejected, no summary withheld. These
+  claims were not hand-checked, so the validator only shows that none broke a rule, not that they are correct.
+  Across all three 8B incidents, 15 claims were proposed and 2 were rejected, both on INC-0009.
 - **Earlier 8B run (before host roles were put into the prompt):** the model also called the external attacker
   servers "possibly compromised" and the summary was withheld for shortened timestamps. Giving the model the
   code-computed host roles removed most of those errors. The roles in the prompt did more than rejection did.
@@ -45,6 +50,8 @@ The code-computed sections are the reliable part. The model's summary and findin
 - It proves **provenance**: IDs, IPs and numbers are grounded in data the agent saw, and role words match the computed roles.
 - It does **not** prove direction, causality or correctness in general. The two wrong-direction claims above passed
   until a specific rule was added. The new rule is wording-based and closes the errors seen, not every phrasing.
+- On most runs the validator rejected nothing. It acts as a safety net, and most of the improvement came from
+  putting the code-computed roles into the prompt.
 - A harmless-looking injected sentence that cites a real flow can still be accepted. The injection tests show the
   real incident, the computed sections and the evidence checks cannot be removed by injected text.
 
