@@ -64,7 +64,7 @@ def test_raw_cicflowmeter_features_map_to_detector_schema(tmp_path):
         writer.writeheader()
         writer.writerow(row)
 
-    flows = FlowDataLoader().load_dataset(source)
+    flows = FlowDataLoader().load_dataset(source, drop_missing=False)
 
     assert set(CANONICAL_FEATURES).issubset(flows.columns)
     assert flows.loc[0, "tot_len_fwd_pkts"] == 1200

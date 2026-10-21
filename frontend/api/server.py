@@ -1,21 +1,40 @@
 import hashlib
 import json
+import os
+import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from ipaddress import ip_address, ip_network
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.agent.flow_store import FlowStore
+from src.investigation_pipeline import run_investigation_pipeline
 from src.agent.mock import (
     investigate as mock_investigate,
     list_incidents as mock_list_incidents,
     load_agent as mock_load_agent,
 )
+from src.agent.api import (
+    investigate as real_investigate,
+    list_incidents as real_list_incidents,
+    load_agent as real_load_agent,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent / "evigraph-backend"
 DATA_FILE = BASE_DIR / "outputs" / "incident_cases.json"
 FALLBACK_DATA_FILE = Path(__file__).resolve().parent.parent.parent / "outputs" / "incident_cases.json"
+INVESTIGATION_ROOT = Path(os.environ.get(
+    "EVIGRAPH_INVESTIGATIONS_DIR",
+    str(Path(__file__).resolve().parents[2] / "outputs" / "investigations"),
+))
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+_investigation_jobs: dict[str, dict] = {}
+_job_lock = threading.Lock()
+_job_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="evigraph-investigation")
 
 PRIVATE_NETWORKS = [ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
 
@@ -52,6 +71,93 @@ def load_cases():
 
     with target_file.open(encoding="utf-8") as f:
         return json.load(f)
+
+
+def _agent_mode() -> str:
+    mode = os.environ.get("EVIGRAPH_AGENT_MODE", "demo").strip().lower()
+    if mode not in {"demo", "real"}:
+        raise HTTPException(
+            status_code=503,
+            detail="EVIGRAPH_AGENT_MODE must be either 'demo' or 'real'.",
+        )
+    return mode
+
+
+def _load_real_agent():
+    flows_path = Path(os.environ.get(
+        "EVIGRAPH_FLOWS_PATH", "data/raw/processed/benchmark_test_flows.parquet"
+    ))
+    incidents_path = Path(os.environ.get(
+        "EVIGRAPH_INCIDENTS_PATH", "data/standin/incident_cases.json"
+    ))
+    for path, label in ((flows_path, "flow data"), (incidents_path, "incident data")):
+        if not path.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail=f"Real ATT&CK investigation requires {label}; file not found at {path.resolve()}.",
+            )
+    try:
+        return real_load_agent(flows_path, incidents_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def normalize_agent_incident(summary: dict) -> dict:
+    """Adapt the real forensic agent's evidence-backed stages to the dashboard schema."""
+    hosts = {}
+    stages = []
+    for idx, stage in enumerate(summary.get("stages_in_time_order", []), 1):
+        sources, targets = stage.get("sources", []), stage.get("targets", [])
+        src = sources[0] if sources else "unknown"
+        dst = targets[0] if targets else "unknown"
+        for ip, role in ((src, "source"), (dst, "target")):
+            if ip != "unknown" and ip not in hosts:
+                hosts[ip] = {
+                    "id": ip,
+                    "ip": ip,
+                    "zone": "INTERNAL" if is_internal_ip(ip) else "EXTERNAL",
+                    "role": role,
+                }
+        evidence = stage.get("evidence", [])
+        risk = max((float(e.get("risk_score", 0)) for e in evidence), default=0.0)
+        tactic, tactic_id = map_tactic(stage.get("attack_class", ""))
+        stages.append({
+            "stage_id": f"{summary['incident_id']}-stage-{idx}",
+            "order": idx,
+            "tactic": tactic,
+            "tactic_id": tactic_id,
+            "src": src,
+            "dst": dst,
+            "port": ", ".join(str(e["dst_port"]) for e in evidence if e.get("dst_port") is not None),
+            "start": stage.get("first_seen"),
+            "end": stage.get("last_seen"),
+            "confidence": risk,
+            "observed": bool(evidence),
+            "behavior": stage.get("attack_class", ""),
+            "summary": f"{stage.get('attack_class', 'Unknown')} activity ({stage.get('alert_count', 0)} alerts)",
+            "evidence": [
+                {
+                    "flow_id": e.get("flow_id"),
+                    "ts": e.get("timestamp", stage.get("first_seen")),
+                    "evidence_id": e.get("evidence_id"),
+                    "pcap_sha256": "",
+                }
+                for e in evidence
+            ],
+            "explanation": [],
+        })
+    return {
+        "incident_id": summary["incident_id"],
+        "score": float(summary.get("severity_score", 0)),
+        "start": summary.get("start"),
+        "end": summary.get("end"),
+        "status": "Open",
+        "hosts": list(hosts.values()),
+        "stages": stages,
+        "background": [],
+        "attack_classes": [s.get("attack_class") for s in summary.get("stages_in_time_order", [])],
+        "total_alerts": summary.get("alert_count", 0),
+    }
 
 
 def to_iso(value):
@@ -174,8 +280,7 @@ def normalize_incident(incident):
         fid = step.get("flow_id")
         edge = edge_map.get(fid, {})
 
-        # Cryptographic leaf digest from verified Merkle evidence tree / flow record
-        pcap_sha256 = edge.get("merkle_leaf_hash") or edge.get("pcap_sha256") or edge.get("sha256")
+        pcap_sha256 = edge.get("pcap_sha256") or edge.get("sha256")
 
         tactic = step.get("attack_stage", "Unknown")
         tactic_id = TACTIC_MAP.get(tactic, "")
@@ -211,12 +316,17 @@ def normalize_incident(incident):
             "end": timestamp,
             "confidence": float(step.get("risk_score", 0.5)),
             "observed": True,
+            "interpretation_status": step.get("interpretation_status", "inferred"),
             "behavior": pred_class,
             "summary": summary,
             "evidence": [{
                 "flow_id": fid,
                 "ts": timestamp,
+                "evidence_id": edge.get("evidence_id"),
+                "source_sha256": edge.get("source_sha256"),
                 "pcap_sha256": pcap_sha256,
+                "merkle_leaf_hash": edge.get("merkle_leaf_hash"),
+                "merkle_verified": edge.get("merkle_verified", False),
             }],
             "explanation": explanation,
         })
@@ -238,6 +348,10 @@ def normalize_incident(incident):
         "background": background,
         "attack_classes": incident.get("attack_classes", []),
         "total_alerts": incident.get("total_alerts", 0),
+        "inference_source": incident.get("inference_source", "prepared"),
+        "source_sha256": incident.get("source_sha256"),
+        "merkle_root": incident.get("merkle_root"),
+        "detection_model": incident.get("detection_model"),
     }
 
 
@@ -356,6 +470,322 @@ def normalize_mock_incident(mock_data: dict) -> dict:
     }
 
 
+def _update_investigation_job(job_id: str, **updates) -> None:
+    with _job_lock:
+        job = _investigation_jobs.get(job_id)
+        if job is not None:
+            job.update(updates)
+
+
+def _validate_fallback_citations(sentences: list[dict], incident: dict, normalized: dict, flow_store) -> dict:
+    incident_flow_ids = set(incident.get("evidence_flow_ids", []))
+    incident_flow_ids.update(
+        alert.get("flow_id")
+        for alert in incident.get("alerts", [])
+        if alert.get("flow_id")
+    )
+    stages = {stage["stage_id"]: stage for stage in normalized.get("stages", [])}
+    valid = 0
+    for sentence in sentences:
+        stage = stages.get(sentence.get("stage_id"))
+        citations = set(sentence.get("evidence_ids", []))
+        stage_flow_ids = {
+            evidence.get("flow_id")
+            for evidence in (stage or {}).get("evidence", [])
+            if evidence.get("flow_id")
+        }
+        if (
+            stage is not None
+            and citations
+            and citations <= stage_flow_ids
+            and citations <= incident_flow_ids
+            and all(flow_store.get_flow(flow_id) is not None for flow_id in citations)
+        ):
+            valid += 1
+    return {
+        "valid": valid,
+        "total": len(sentences),
+        "rejected": len(sentences) - valid,
+    }
+
+
+def _run_investigation_job(job_id: str, input_path: Path, output_dir: Path, model_type: str) -> None:
+    try:
+        result = run_investigation_pipeline(
+            input_path,
+            output_dir,
+            model_type=model_type,
+            progress=lambda stage, percent: _update_investigation_job(
+                job_id, status="running", stage=stage, progress=percent
+            ),
+        )
+        case_data = json.loads(Path(result["cases_path"]).read_text(encoding="utf-8"))
+        incident_ids = [inc["incident_id"] for inc in case_data.get("incidents", [])]
+        reports_dir = output_dir / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+
+        if incident_ids:
+            _update_investigation_job(
+                job_id, status="running", stage="Generating evidence-grounded reports", progress=92
+            )
+            agent = real_load_agent(result["flows_path"], result["cases_path"])
+            for index, incident_id in enumerate(incident_ids, 1):
+                agent_result = real_investigate(agent, incident_id)
+                if agent_result.get("error"):
+                    raise RuntimeError(
+                        f"Report generation failed for {incident_id}: {agent_result['error']}"
+                    )
+                incident_case = next(
+                    inc for inc in case_data["incidents"] if inc["incident_id"] == incident_id
+                )
+                sentences = []
+                for finding in agent_result.get("findings", []):
+                    stage_id = resolve_finding_stage(
+                        finding, incident_id, agent_res=agent_result, case_incident=incident_case
+                    )
+                    sentences.append({
+                        "text": finding["claim"],
+                        "stage_id": stage_id,
+                        "evidence_ids": finding.get("flow_ids", []),
+                        "technique_id": finding.get("technique_id"),
+                    })
+                validation = None
+                if not sentences:
+                    normalized = normalize_incident(incident_case)
+                    sentences = [{
+                        "text": f"{stage['summary']} from {stage['src']} to {stage['dst']}.",
+                        "stage_id": stage["stage_id"],
+                        "evidence_ids": [item["flow_id"] for item in stage["evidence"]],
+                    } for stage in normalized["stages"]]
+                    fallback_validation = _validate_fallback_citations(
+                        sentences, incident_case, normalized, agent.tools.store
+                    )
+                    rejected_count = len(agent_result.get("rejected_findings", []))
+                    validation = {
+                        "valid": fallback_validation["valid"],
+                        "total": fallback_validation["total"] + rejected_count,
+                        "rejected": fallback_validation["rejected"] + rejected_count,
+                    }
+                findings_count = len(agent_result.get("findings", []))
+                rejected_count = len(agent_result.get("rejected_findings", []))
+                if validation is None:
+                    validation = {
+                        "valid": findings_count,
+                        "total": findings_count + rejected_count,
+                        "rejected": rejected_count,
+                    }
+                report_payload = {
+                    "report_id": f"RPT-{incident_id}",
+                    "incident_id": incident_id,
+                    "provenance": case_data.get("provenance", {}),
+                    "sentences": sentences,
+                    "validation": validation,
+                    "footer": {
+                        "input_sha256": result["source_sha256"],
+                        "merkle_root": result.get("merkle_root"),
+                        "merkle_certificate": "forensic_merkle_certificate.json",
+                        "manifest_id": f"run_{job_id}",
+                        "attack_version": "v15",
+                    },
+                    "summary": agent_result.get("summary"),
+                    "summary_withheld_reason": agent_result.get("summary_withheld_reason"),
+                    "reasoning_status": agent_result.get("reasoning_status", "unavailable"),
+                    "reasoning_error": agent_result.get("reasoning_error"),
+                    "factual_summary": agent_result.get("factual_summary"),
+                    "findings": agent_result.get("findings", []),
+                    "rejected_findings": agent_result.get("rejected_findings", []),
+                    "host_roles": agent_result.get("host_roles", {}),
+                    "attack_matches": agent_result.get("attack_matches", {}),
+                    "retrieval_status": agent_result.get("retrieval_status", "unavailable"),
+                    "report_markdown": agent_result.get("report_markdown", ""),
+                    "investigation_job_id": job_id,
+                }
+                (reports_dir / f"{incident_id}.json").write_text(
+                    json.dumps(report_payload, indent=2, default=str), encoding="utf-8"
+                )
+                report_progress = 92 + int(7 * index / len(incident_ids))
+                _update_investigation_job(
+                    job_id, stage=f"Generated report {index}/{len(incident_ids)}", progress=report_progress
+                )
+
+        _update_investigation_job(
+            job_id,
+            status="completed",
+            stage="Investigation complete",
+            progress=100,
+            result={
+                **result,
+                "incident_ids": incident_ids,
+                "report_count": len(incident_ids),
+                "inference_source": "fresh",
+            },
+            error=None,
+        )
+    except Exception as exc:
+        _update_investigation_job(
+            job_id,
+            status="failed",
+            stage="Investigation failed",
+            error=f"{type(exc).__name__}: {exc}",
+            progress=100,
+        )
+
+
+@app.post("/investigations", status_code=202)
+async def create_investigation(request: Request):
+    """Stream an uploaded supported input to disk and run inference out of request thread."""
+    filename = request.headers.get("x-filename", "").replace("\\", "/").rsplit("/", 1)[-1]
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".csv", ".parquet", ".pcap", ".pcapng"}:
+        raise HTTPException(
+            status_code=415,
+            detail="Unsupported input format. Upload a flow CSV, flow Parquet, PCAP, or PCAPNG file.",
+        )
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Input exceeds the 2 GiB upload limit.")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length header.") from exc
+    model_type = request.headers.get("x-detector", "xgb").strip().lower()
+    if model_type not in {"xgb", "gnn"}:
+        raise HTTPException(status_code=422, detail="Detector must be either 'xgb' or 'gnn'.")
+
+    job_id = uuid.uuid4().hex
+    output_dir = INVESTIGATION_ROOT / job_id
+    output_dir.mkdir(parents=True, exist_ok=False)
+    input_path = output_dir / filename
+    total_bytes = 0
+    try:
+        with input_path.open("xb") as destination:
+            async for chunk in request.stream():
+                total_bytes += len(chunk)
+                if total_bytes > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Input exceeds the 2 GiB upload limit.")
+                destination.write(chunk)
+    except Exception:
+        input_path.unlink(missing_ok=True)
+        raise
+    if total_bytes == 0:
+        input_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="Uploaded input is empty.")
+
+    job = {
+        "job_id": job_id,
+        "status": "queued",
+        "stage": "Waiting for an investigation worker",
+        "progress": 0,
+        "filename": filename,
+        "model_type": model_type,
+        "created_at": datetime.now().astimezone().isoformat(),
+        "error": None,
+    }
+    with _job_lock:
+        _investigation_jobs[job_id] = job
+    _job_executor.submit(_run_investigation_job, job_id, input_path, output_dir, model_type)
+    return dict(job)
+
+
+@app.get("/investigations/{job_id}")
+def get_investigation(job_id: str):
+    with _job_lock:
+        job = _investigation_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Investigation job not found.")
+        return dict(job)
+
+
+def _completed_job(job_id: str) -> tuple[dict, dict]:
+    with _job_lock:
+        job = _investigation_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Investigation job not found.")
+        snapshot = dict(job)
+    if snapshot["status"] != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "status": snapshot["status"],
+                "stage": snapshot["stage"],
+                "progress": snapshot["progress"],
+                "error": snapshot.get("error"),
+            },
+        )
+    output_dir = INVESTIGATION_ROOT / job_id
+    cases = json.loads((output_dir / "incident_cases.json").read_text(encoding="utf-8"))
+    return snapshot, cases
+
+
+@app.get("/investigations/{job_id}/incidents")
+def get_investigation_incidents(job_id: str):
+    job, cases = _completed_job(job_id)
+    incidents = []
+    for item in cases.get("incidents", []):
+        normalized = normalize_incident(item)
+        normalized.update({
+            "inference_source": "fresh",
+            "source_sha256": cases.get("provenance", {}).get("input_sha256"),
+            "detection_model": job["model_type"],
+            "detector_label": (job.get("result") or {}).get("detector_label", job["model_type"]),
+            "merkle_root": cases.get("merkle_root"),
+            "investigation_job_id": job_id,
+        })
+        incidents.append(normalized)
+    return incidents
+
+
+@app.get("/investigations/{job_id}/incidents/{incident_id}/report")
+def get_investigation_report(job_id: str, incident_id: str):
+    _job, _cases = _completed_job(job_id)
+    report_path = INVESTIGATION_ROOT / job_id / "reports" / f"{incident_id}.json"
+    if not report_path.is_file():
+        raise HTTPException(status_code=404, detail=f"No generated report for incident {incident_id}.")
+    return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+@app.get("/investigations/{job_id}/incidents/{incident_id}/evidence/{flow_id}")
+def get_investigation_evidence(job_id: str, incident_id: str, flow_id: str):
+    _job, cases = _completed_job(job_id)
+    incident = next(
+        (item for item in cases.get("incidents", []) if item.get("incident_id") == incident_id),
+        None,
+    )
+    if incident is None:
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found.")
+    if flow_id not in set(incident.get("evidence_flow_ids", [])):
+        raise HTTPException(status_code=404, detail=f"Flow {flow_id} is not evidence for {incident_id}.")
+    flow_path = INVESTIGATION_ROOT / job_id / "scored_flows.parquet"
+    flow = FlowStore(flow_path).get_flow(flow_id)
+    if flow is None:
+        raise HTTPException(status_code=404, detail=f"Evidence flow {flow_id} is not available.")
+    return {
+        "incident_id": incident_id,
+        "flow_id": flow_id,
+        "evidence_id": flow.get("evidence_id"),
+        "source_sha256": flow.get("source_sha256"),
+        "merkle_root": cases.get("merkle_root"),
+        "merkle_leaf_hash": next((
+            edge.get("merkle_leaf_hash")
+            for edge in incident.get("subgraph", {}).get("edges", [])
+            if edge.get("edge_id") == flow_id
+        ), None),
+        "merkle_verified": next((
+            bool(edge.get("merkle_verified"))
+            for edge in incident.get("subgraph", {}).get("edges", [])
+            if edge.get("edge_id") == flow_id
+        ), False),
+        "merkle_proof": next((
+            proof
+            for proof in json.loads(
+                (INVESTIGATION_ROOT / job_id / "forensic_merkle_certificate.json").read_text(encoding="utf-8")
+            ).get("incident_evidence_proofs", {}).get(incident_id, [])
+            if proof.get("flow_id") == flow_id
+        ), None) if (INVESTIGATION_ROOT / job_id / "forensic_merkle_certificate.json").is_file() else None,
+        "flow": flow,
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -363,6 +793,13 @@ def health():
 
 @app.get("/incidents")
 def get_incidents():
+    if _agent_mode() == "real":
+        agent = _load_real_agent()
+        return [
+            normalize_agent_incident(agent.tools.get_incident(row["incident_id"]))
+            for row in real_list_incidents(agent)
+        ]
+
     result = []
     known_ids = set()
 
@@ -393,6 +830,13 @@ def get_incidents():
 
 @app.get("/incidents/{incident_id}")
 def get_incident(incident_id: str):
+    if _agent_mode() == "real":
+        agent = _load_real_agent()
+        summary = agent.tools.get_incident(incident_id)
+        if "error" in summary:
+            raise HTTPException(status_code=404, detail=summary["error"])
+        return normalize_agent_incident(summary)
+
     try:
         data = load_cases()
         for incident in data.get("incidents", []):
@@ -467,14 +911,30 @@ def resolve_finding_stage(
                 stg_flows.add(fid)
 
             # Techniques matched for this stage
-            stg_techs = {
-                m.get("id")
-                for m in attack_matches.get(attack_cls, [])
-                if isinstance(m, dict) and m.get("id")
+            stage_results = [
+                value for key, value in attack_matches.items()
+                if key == attack_cls
+                or (isinstance(value, dict) and value.get("attack_class") == attack_cls)
+            ]
+            stage_matches = [
+                match
+                for result in stage_results
+                for match in (
+                    result.get("matches", []) if isinstance(result, dict) else result
+                )
+                if isinstance(match, dict)
+            ]
+            stg_techs = {match.get("id") for match in stage_matches if match.get("id")}
+            stage_technique_evidence = {
+                match.get("id"): set(match.get("evidence_flow_ids", []))
+                for match in stage_matches if match.get("id")
             }
 
             score = 0
-            if f_tech and f_tech in stg_techs:
+            mapped_flows = stage_technique_evidence.get(f_tech, set())
+            if f_tech and f_tech in stg_techs and (
+                not mapped_flows or bool(f_flows & mapped_flows)
+            ):
                 score += 5
 
             common_flows = f_flows & stg_flows
@@ -531,13 +991,18 @@ def resolve_finding_stage(
 @app.api_route("/incidents/{incident_id}/investigate", methods=["GET", "POST"])
 def get_report(incident_id: str):
     agent_res = None
-    try:
-        mock_agent = mock_load_agent()
-        mdata = mock_investigate(mock_agent, incident_id)
-        if not mdata.get("error"):
-            agent_res = mdata
-    except Exception:
-        pass
+    if _agent_mode() == "real":
+        agent_res = real_investigate(_load_real_agent(), incident_id)
+        if agent_res.get("error"):
+            raise HTTPException(status_code=404, detail=agent_res["error"])
+    else:
+        try:
+            mock_agent = mock_load_agent()
+            mdata = mock_investigate(mock_agent, incident_id)
+            if not mdata.get("error"):
+                agent_res = mdata
+        except Exception:
+            pass
 
     case_incident = None
     merkle_root = ""
@@ -624,6 +1089,7 @@ def get_report(incident_id: str):
             "rejected_findings": agent_res.get("rejected_findings", []),
             "host_roles": agent_res.get("host_roles", {}),
             "attack_matches": agent_res.get("attack_matches", {}),
+            "retrieval_status": agent_res.get("retrieval_status", "demo"),
             "report_markdown": agent_res.get("report_markdown", ""),
         })
 

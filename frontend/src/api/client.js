@@ -9,7 +9,32 @@ async function http(path, opts = {}) {
     ...opts,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${path}`);
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json();
+      detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail ?? body);
+    } catch {
+      // Keep the HTTP status if the server does not return a JSON error body.
+    }
+    throw new Error(`${detail} for ${path}`);
+  }
+  return res.json();
+}
+
+async function freshHttp(path, opts = {}) {
+  const res = await fetch(API_BASE + path, opts);
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    const bodyText = await res.text();
+    try {
+      const body = JSON.parse(bodyText);
+      detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail ?? body);
+    } catch {
+      if (bodyText) detail = bodyText;
+    }
+    throw new Error(detail);
+  }
   return res.json();
 }
 
@@ -36,4 +61,37 @@ export async function getIncident(id) {            // GET /incidents/{id}
 export async function getReport(id) {              // POST /incidents/{id}/report
   if (USE_MOCK) return (await import('./mock.js')).mockReport(id);
   return http(`/incidents/${encodeURIComponent(id)}/report`, { method: 'POST' });
+}
+
+export async function startInvestigation(file, detector) {
+  return freshHttp('/investigations', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Filename': file.name,
+      'X-Detector': detector,
+    },
+    body: file,
+  });
+}
+
+export async function getInvestigation(jobId) {
+  return freshHttp(`/investigations/${encodeURIComponent(jobId)}`);
+}
+
+export async function getInvestigationIncidents(jobId) {
+  const incidents = await freshHttp(`/investigations/${encodeURIComponent(jobId)}/incidents`);
+  return incidents.map(normalize);
+}
+
+export async function getInvestigationReport(jobId, incidentId) {
+  return freshHttp(
+    `/investigations/${encodeURIComponent(jobId)}/incidents/${encodeURIComponent(incidentId)}/report`,
+  );
+}
+
+export async function getInvestigationEvidence(jobId, incidentId, flowId) {
+  return freshHttp(
+    `/investigations/${encodeURIComponent(jobId)}/incidents/${encodeURIComponent(incidentId)}/evidence/${encodeURIComponent(flowId)}`,
+  );
 }

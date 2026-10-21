@@ -106,7 +106,7 @@ class FlowDataLoader:
         self.metadata_cols = metadata_cols or METADATA_COLS
         self.feature_columns: List[str] = []
 
-    def clean_dataset(self, df: pd.DataFrame) -> pd.DataFrame:
+    def clean_dataset(self, df: pd.DataFrame, drop_missing: bool = True) -> pd.DataFrame:
         """Removes infinite/NaN values and duplicates (TRD FR-2.5)."""
         initial_len = len(df)
         
@@ -124,7 +124,8 @@ class FlowDataLoader:
 
         # Replace Inf with NaN, then fill or drop
         df = df.replace([np.inf, -np.inf], np.nan)
-        df = df.dropna(subset=[c for c in df.columns if c not in self.metadata_cols])
+        if drop_missing:
+            df = df.dropna(subset=[c for c in df.columns if c not in self.metadata_cols])
         
         # Deduplicate
         df = df.drop_duplicates()
@@ -201,9 +202,15 @@ class FlowDataLoader:
         
         return X_train, y_train, meta_train, X_val, y_val, meta_val, X_test, y_test, meta_test
 
-    def load_dataset(self, file_path: Path, max_rows: Optional[int] = None) -> pd.DataFrame:
+    def load_dataset(
+        self,
+        file_path: Path,
+        max_rows: Optional[int] = None,
+        *,
+        drop_missing: bool = True,
+    ) -> pd.DataFrame:
         print(f"[DataLoader] Reading flows from {file_path}")
-        if str(file_path).endswith(".parquet"):
+        if Path(file_path).suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         else:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f_peek:
@@ -227,16 +234,22 @@ class FlowDataLoader:
                 df = df.sort_values(by="timestamp")
             df = df.iloc[:max_rows].copy()
         
-        # Ensure flow_id exists and is clean string
+        # Remove exact duplicate source rows before synthetic row IDs distinguish them.
+        # Existing distinct flow IDs remain distinct, even for otherwise identical rows.
+        if "flow_id" not in df.columns:
+            df = df.drop_duplicates()
+
+        # Ensure flow_id exists and preserve missing IDs for callers that can replace them
+        # with source-bound identifiers.
         if "flow_id" not in df.columns:
             df["flow_id"] = [f"flw_{i:07d}" for i in range(len(df))]
         else:
-            df["flow_id"] = df["flow_id"].astype(str)
+            df["flow_id"] = df["flow_id"].astype("string")
             
         if "evidence_id" not in df.columns:
             df["evidence_id"] = file_path.stem
             
-        return self.clean_dataset(df)
+        return self.clean_dataset(df, drop_missing=drop_missing)
 
     def load_from_csv(self, file_path: Path) -> pd.DataFrame:
         return self.load_dataset(file_path)

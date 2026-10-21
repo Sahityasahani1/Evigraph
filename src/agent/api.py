@@ -24,7 +24,7 @@ def investigate(agent, incident_id: str) -> dict:
     result = generate_report(agent, incident_id)
     if result["error"]:
         return {"incident_id": incident_id, "error": result["error"]}
-    briefing, _ = agent._gather(incident_id, [])
+    briefing = result["briefing"]
     inc = briefing["incident"]
     return {
         "incident_id": incident_id,
@@ -37,11 +37,14 @@ def investigate(agent, incident_id: str) -> dict:
         "report_markdown": result["report"],
         "summary": result["summary"],
         "summary_withheld_reason": result["summary_note"],
+        "reasoning_status": result["reasoning_status"],
+        "reasoning_error": result["reasoning_error"],
         "factual_summary": result["factual_summary"],
         "host_roles": result["host_roles"],
         "timeline": inc["stages_in_time_order"],
         "cross_stage_hosts": inc.get("cross_stage_hosts", []),
-        "attack_matches": {c: r["matches"] for c, r in briefing["attack_matches"].items()},
+        "attack_matches": briefing["attack_matches"],
+        "retrieval_status": getattr(agent.tools.kb, "status", "available"),
         "findings": [f.model_dump() for f in result["accepted"]],
         "rejected_findings": [
             {"finding": r["finding"].model_dump(), "problems": r["problems"]}

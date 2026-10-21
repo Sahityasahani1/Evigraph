@@ -9,7 +9,7 @@ Covers:
 """
 
 import pandas as pd
-from hypothesis import given
+from hypothesis import HealthCheck, given
 from hypothesis import settings as hyp_settings
 from hypothesis import strategies as st
 
@@ -126,7 +126,7 @@ def test_make_flow_ids_unique_and_collision_check():
     protocol=st.sampled_from([1, 6, 17]),
     ts_offset=st.integers(min_value=0, max_value=1000)
 )
-@hyp_settings(max_examples=30)
+@hyp_settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
 def test_hypothesis_make_flow_ids_properties(src_ip, dst_ip, src_port, dst_port, protocol, ts_offset):
     """Hypothesis property test asserting stability, prefix, length, and determinism."""
     df = pd.DataFrame([

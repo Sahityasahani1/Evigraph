@@ -189,6 +189,8 @@ Verify you have Python 3.11+ installed. Install the dependencies:
 pip install pandas numpy scikit-learn xgboost networkx pyarrow huggingface_hub
 # Optional for PyTorch Autoencoder and PyG GNN:
 pip install torch torch_geometric
+# Or install the declared optional GNN dependencies:
+pip install ".[gnn]"
 ```
 
 ### 2. Run Immediate Pipeline (Default: Tri-Pillar Ensemble)
@@ -215,7 +217,15 @@ python main.py --model histgb
 
 # PyTorch Geometric Edge-GraphSAGE (Graph Neural Network)
 python main.py --model gnn
+
+# Use an existing, compatible GNN checkpoint without training
+python main.py --model gnn --load-checkpoint
 ```
+The GNN command trains on the training partition, uses validation data for
+threshold selection, then scores only the later held-out test partition. Its
+checkpoint records the feature schema, graph-window configuration, and training
+time boundary; legacy checkpoints without this metadata must be retrained before
+they can be used by the pipeline. Training writes `models/gnn_edge_sage.pt`.
 
 ### 4. Run on Real Big Data & Benchmarks
 EviGraph provides several data loading modes via `--data`:
@@ -240,6 +250,64 @@ python main.py --agent
 python -m src.agent.forensic_agent
 ```
 This generates `outputs/forensic_incident_report.md` with verifiable evidence citations `[E:<flow_id>]`, and automatically invokes the **Adversarial Courtroom Cross-Examiner** to issue `outputs/certified_forensic_verdict.json`.
+
+### ATT&CK retrieval in the dashboard API
+The dashboard API stays in its saved-report demo mode by default. To opt into the
+forensic agent and the existing embedding-based ATT&CK retriever, configure the
+live flow and incident data before starting the API:
+```powershell
+$env:EVIGRAPH_AGENT_MODE = "real"
+$env:EVIGRAPH_FLOWS_PATH = "data/sample/sample_flows.csv"
+$env:EVIGRAPH_INCIDENTS_PATH = "data/sample/sample_incident_cases.json"
+python -m uvicorn frontend.api.server:app --reload
+```
+The retriever uses `data/knowledge/attack_techniques.json` and the existing
+`data/knowledge/attack_index.npz` embedding index. If the ignored index is not
+present, start Ollama, make its `nomic-embed-text` model available, and build
+the index with `python -m src.agent.attack_rag`. The API reports retrieval as
+unavailable rather than substituting hardcoded techniques. Retrieved matches
+are presented as evidence-linked inferences, never as confirmed behavior.
+
+### Fresh investigation from an input file
+The API accepts the formats connected to the existing ingestion pipeline:
+flow CSV, flow Parquet, PCAP, and PCAPNG. PCAP input is converted into flows by
+the existing streaming parser; arbitrary packet captures are not treated as
+precomputed flow CSV. Flow files must include timestamps, source/destination
+addresses and ports, protocol, and the feature columns required by the chosen
+checkpoint. The default detector is the saved XGBoost checkpoint. Choose GNN
+only with a compatible checkpoint; missing, legacy, or schema-incompatible
+weights are returned as job errors, never replaced with synthetic predictions.
+
+Run the API and Vite dashboard, then set `VITE_USE_MOCK=false` for the dashboard
+to use the backend for prepared incidents. The prepared/demo selector (including
+INC-0009 when present) remains a separate route; uploading a file creates a new
+fresh-inference job and does not relabel demo data:
+```powershell
+python -m uvicorn frontend.api.server:app --reload
+cd frontend
+$env:VITE_USE_MOCK = "false"
+npm run dev
+```
+Use **Input** and **Run fresh investigation** in the dashboard. The API streams
+the upload to disk, hashes the original bytes, and responds with a job ID. The
+dashboard polls progress without blocking the server request; completed
+investigations expose normalized incidents, evidence-grounded reports, and
+flow evidence lookup. Job endpoints are `POST /investigations`,
+`GET /investigations/{job_id}`, `GET /investigations/{job_id}/incidents`, and
+per-incident `/report` and `/evidence/{flow_id}` routes. Jobs and their artifacts
+are stored in unique folders under `outputs/investigations/`. Input hashes,
+flow IDs, source evidence IDs, timestamps, and detector provenance are retained;
+source labels are excluded from inference.
+
+When Ollama is unreachable, deterministic evidence-derived reports remain
+available and explicitly identify the degraded reasoning status; no model-made
+findings are claimed. Missing ATT&CK index status is also shown explicitly.
+Verify the end-to-end contract with:
+```powershell
+python -m pytest tests/test_investigation_pipeline.py -q
+cd frontend
+npm test
+```
 
 ### 6. Run Standalone Adversarial Courtroom Cross-Examiner (USP)
 To independently cross-examine and audit a forensic report against Merkle proofs, Layer-4 protocols, Causal DAGs, and raw telemetry:
@@ -296,7 +364,7 @@ python -m unittest tests/test_counterfactual_engine.py
 python -m unittest discover -s tests
 ```
 
-* **Temporal Split Only:** Never use random splits. Chronological ordering within each class ensures historical data trains the model and future traffic evaluates generalization.
+* **Temporal Split Only:** Never use random splits. The detection runner uses globally chronological train/validation/test partitions, so each partition starts after the previous one ends.
 * **Leakage Controls:** IP addresses, MACs, and port numbers must never be features for tabular models; they are strictly metadata.
 * **Traceability:** Every alert emitted by Member 2 references an immutable `flow_id` and `evidence_id`.
 * **Zero-Day Resilience:** The unsupervised autoencoder complements supervised models by flagging zero-day reconstruction anomalies without prior attack signatures.

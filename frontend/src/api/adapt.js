@@ -17,19 +17,21 @@ export function adapt(raw) {
   (raw.background ?? []).forEach(b => { touch(b.src); touch(b.dst); });
 
   if (!sIn.length) {
-    let n = 0;
+    let n = 0, attackerCount = 0;
     const alias = new Map();
     const hosts = [...hostIn.values()].map(h => {
       const old = h.id ?? h.ip;
-      const isAtk = (h.role || '').toLowerCase().includes('attacker');
-      const id = isIp(old) ? (isAtk ? 'ATK' : `H${++n}`) : old;
+      const isAttacker = /attacker|infrastructure/i.test(h.role ?? '');
+      const id = isIp(old)
+        ? (isAttacker ? (++attackerCount === 1 ? 'ATK' : `ATK${attackerCount}`) : `H${++n}`)
+        : old;
       alias.set(old, id);
       return {
         ...h,
         id,
         ip: h.ip ?? old,
-        zone: h.zone ?? (isAtk ? 'EXTERNAL' : 'INTERNAL'),
-        role: h.role ?? (isAtk ? 'Attacker' : 'Host'),
+        zone: h.zone ?? (isAttacker ? 'EXTERNAL' : 'INTERNAL'),
+        role: h.role ?? (isAttacker ? 'Attacker' : 'Host'),
       };
     });
     const m = id => alias.get(id) ?? id;
@@ -46,12 +48,22 @@ export function adapt(raw) {
     };
   }
 
-  const entry = sIn[0].src, firstDst = sIn[0].dst, alias = new Map();
-  let n = 0;
+  const firstDst = sIn[0].dst, alias = new Map();
+  let n = 0, attackerCount = 0;
   const hosts = [...hostIn.values()].map(h => {
-    const old = h.id ?? h.ip, atk = old === entry, id = isIp(old) ? (atk ? 'ATK' : `H${++n}`) : old;
+    const old = h.id ?? h.ip;
+    const isAttacker = /attacker|infrastructure/i.test(h.role ?? '');
+    const id = isIp(old)
+      ? (isAttacker ? (++attackerCount === 1 ? 'ATK' : `ATK${attackerCount}`) : `H${++n}`)
+      : old;
     alias.set(old, id);
-    return { ...h, id, ip: h.ip ?? old, zone: h.zone ?? (atk ? 'EXTERNAL' : 'INTERNAL'), role: h.role ?? (atk ? 'Attacker' : old === firstDst ? 'Target host' : 'Host') };
+    return {
+      ...h,
+      id,
+      ip: h.ip ?? old,
+      zone: h.zone ?? (isAttacker ? 'EXTERNAL' : 'INTERNAL'),
+      role: h.role ?? (isAttacker ? 'Attacker' : old === firstDst ? 'Target host' : 'Host'),
+    };
   });
   const m = id => alias.get(id) ?? id;
 

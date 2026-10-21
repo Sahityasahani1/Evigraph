@@ -31,6 +31,10 @@ dev = [
     "hypothesis>=6.100.0",
     "ruff>=0.9.0",
 ]
+gnn = [
+    "torch>=2.0.0",
+    "torch-geometric>=2.5.0",
+]
 
 [project.scripts]
 evigraph-data = "data.cli:app"

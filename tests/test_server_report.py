@@ -123,3 +123,53 @@ def test_resolve_multi_finding_report_mapping(monkeypatch):
     assert sentences[3]["stage_id"] is None
 
 
+def test_real_report_api_preserves_evidence_grounded_attack_retrieval(monkeypatch):
+    from frontend.api import server
+
+    match = {
+        "id": "T1110",
+        "name": "Brute Force",
+        "tactics": ["credential-access"],
+        "score": 0.91,
+        "source_url": "https://attack.mitre.org/techniques/T1110",
+        "mapping_status": "inferred",
+        "evidence_flow_ids": ["flw_000201"],
+        "evidence_ids": ["sample_capture_001"],
+        "assessment": "Inferred candidate; retrieval relevance is not confirmation.",
+    }
+    real_result = {
+        "incident_id": "INC-001",
+        "error": None,
+        "timeline": [{
+            "attack_class": "SSH-Patator",
+            "first_flow_id": "flw_000201",
+            "last_flow_id": "flw_000210",
+            "flow_ids": ["flw_000201"],
+        }],
+        "attack_matches": {
+            "SSH-Patator": {
+                "status": "available",
+                "mapping_status": "inferred",
+                "attack_class": "SSH-Patator",
+                "matches": [match],
+            },
+        },
+        "retrieval_status": "available",
+        "findings": [{
+            "claim": "Possible SSH password guessing activity.",
+            "flow_ids": ["flw_000201"],
+            "technique_id": "T1110",
+        }],
+        "rejected_findings": [],
+    }
+    monkeypatch.setenv("EVIGRAPH_AGENT_MODE", "real")
+    monkeypatch.setattr(server, "_load_real_agent", lambda: object())
+    monkeypatch.setattr(server, "real_investigate", lambda agent, incident_id: real_result)
+
+    report = server.get_report("INC-001")
+
+    result = report["attack_matches"]["SSH-Patator"]
+    assert report["retrieval_status"] == "available"
+    assert result["matches"][0] == match
+    assert report["sentences"][0]["stage_id"] == "INC-001-stage-1"
+

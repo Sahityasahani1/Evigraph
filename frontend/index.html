@@ -1,49 +1,163 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>EviGraph · 3D Network Forensic Console</title>
-</head>
-<body>
-  <canvas id="scene"></canvas>
-  <div id="mapzone"></div>
-  <header class="p" id="hd">
-    <b class="brand"><span data-ico="hex"></span>EviGraph</b>
-    <select id="incSel" data-tip="incident"></select>
-    <span class="mu badge" id="mode"></span>
-    <span class="grow"></span>
-    <button id="bBenign" class="on sm" data-tip="benign">Normal traffic</button>
-    <button id="bRotate" class="on sm" data-tip="rotate">Auto-rotate</button>
-    <button id="bPackets" class="on sm" data-tip="packets">Packets</button>
-    <button id="bFollow" class="on sm" data-tip="follow">Camera follow</button>
-    <div class="seg" data-tip="mode"><button data-mode="beginner">Beginner</button><button data-mode="analyst">Analyst</button></div>
-  </header>
-  <nav class="p" id="rail">
-    <button data-view="overview" data-ico="home" data-tip="v_overview" class="on"></button>
-    <button data-view="report" data-ico="report" data-tip="v_report"></button>
-    <hr />
-    <button data-view="courtroom" data-ico="scale" data-tip="courtroom" class="soon"></button>
-    <button data-view="containment" data-ico="shield" data-tip="containment" class="soon"></button>
-    <button data-view="privacy" data-ico="lock" data-tip="privacy" class="soon"></button>
-    <span class="grow"></span>
-    <button id="bTour" data-ico="help" data-tip="tour"></button>
-    <button id="bTheme" data-tip="theme"></button>
-  </nav>
-  <aside class="p" id="left"></aside>
-  <aside class="p" id="right"><div id="detail"></div></aside>
-  <div class="p" id="cap"></div>
-  <footer class="p" id="bottom">
-    <div class="row">
-      <button id="prev" data-ico="prev" data-tip="step"></button>
-      <button id="play" data-tip="replay"></button>
-      <button id="next" data-ico="next" data-tip="step"></button>
-      <span id="clk" class="mu"></span><span class="grow"></span>
-      <span class="mu hint">Drag = orbit · wheel = zoom · click = details · hover = explain</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111820" />
+    <title>EviGraph | Investigation workspace</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand" aria-label="EviGraph investigation workspace">
+        <span class="brand-mark" aria-hidden="true">E</span>
+        <span>EviGraph <small>THREAT INVESTIGATION</small></span>
+      </div>
+      <div class="topbar-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="connectionStatus">Connecting to investigation API…</span>
+        <span class="divider" aria-hidden="true"></span>
+        <span id="mode" class="source-badge">—</span>
+      </div>
+      <div class="topbar-actions">
+        <label class="file-picker" for="inputFile">Choose flow or capture</label>
+        <input id="inputFile" type="file" accept=".csv,.parquet,.pcap,.pcapng" />
+        <select id="detector" aria-label="Detection model">
+          <option value="xgb">XGBoost</option>
+          <option value="gnn">GraphSAGE GNN (migrated legacy; temporal isolation unverified)</option>
+        </select>
+        <button id="runInvestigation" class="button button-primary">Run investigation</button>
+      </div>
+    </header>
+
+    <div id="jobProgress" class="job-progress" role="status" aria-live="polite" hidden></div>
+
+    <div class="app-shell">
+      <aside class="incident-sidebar" aria-label="Incident list">
+        <div class="sidebar-heading">
+          <div>
+            <p class="eyebrow">CASE MANAGEMENT</p>
+            <h1>Incidents <span id="incidentCount" class="count-pill">0</span></h1>
+          </div>
+          <button id="retryIncidents" class="icon-button" aria-label="Reload incidents" title="Reload incidents">↻</button>
+        </div>
+        <label class="search-field">
+          <span aria-hidden="true">⌕</span>
+          <input id="incidentSearch" type="search" placeholder="Search incidents or hosts" autocomplete="off" />
+        </label>
+        <div class="filter-row">
+          <label for="severityFilter">Severity</label>
+          <select id="severityFilter">
+            <option value="all">All severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div id="incidentList" class="incident-list" aria-live="polite"></div>
+        <div class="sidebar-foot"><span class="live-indicator"></span> Investigation data from configured backend</div>
+      </aside>
+
+      <main id="workspace" class="workspace" tabindex="-1">
+        <div id="loadState" class="state-card" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <div><strong>Loading investigations</strong><p>Connecting to the configured incident API.</p></div>
+        </div>
+        <div id="investigation" hidden>
+          <section id="incidentOverview" class="incident-overview" aria-label="Incident overview"></section>
+
+          <div class="main-grid">
+            <div class="analysis-column">
+              <section class="panel graph-panel" aria-labelledby="graphTitle">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">NETWORK RELATIONSHIPS</p>
+                    <h2 id="graphTitle">Attack graph</h2>
+                  </div>
+                  <div class="graph-controls" role="group" aria-label="Attack graph controls">
+                    <button type="button" data-graph-action="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+                    <button type="button" data-graph-action="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+                    <button type="button" data-graph-action="fit" title="Fit graph to view">Fit</button>
+                    <button type="button" data-graph-action="reset" title="Reset graph view">Reset</button>
+                  </div>
+                </div>
+                <p class="panel-subtitle">Observed hosts and reported communication paths. Select a host or path to inspect its evidence.</p>
+                <div id="attackGraph" class="attack-graph" tabindex="0" aria-label="Interactive host communication graph. Use Tab to select a host or relationship, plus or minus to zoom, and zero to reset."></div>
+                <div id="graphLegend" class="graph-legend">
+                  <span><i class="legend-mark host-mark"></i> Host</span>
+                  <span><i class="legend-mark observed-mark"></i> Observed alert path</span>
+                  <span><i class="legend-mark inferred-mark"></i> Inferred stage</span>
+                </div>
+              </section>
+
+              <section class="panel timeline-panel" aria-labelledby="timelineTitle">
+                <div class="panel-heading timeline-heading">
+                  <div>
+                    <p class="eyebrow">CHRONOLOGICAL ACTIVITY</p>
+                    <h2 id="timelineTitle">Attack timeline</h2>
+                  </div>
+                  <div class="timeline-filters">
+                    <label class="search-field compact">
+                      <span aria-hidden="true">⌕</span>
+                      <input id="eventSearch" type="search" placeholder="Filter events" autocomplete="off" />
+                    </label>
+                    <select id="eventTypeFilter" aria-label="Filter observed or inferred events">
+                      <option value="all">All activity</option>
+                      <option value="observed">Observed</option>
+                      <option value="inferred">Inferred</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="replay-controls" role="group" aria-label="Observed evidence replay controls">
+                  <button type="button" class="button button-secondary replay-toggle" id="replayToggle" aria-label="Play observed evidence replay">Play</button>
+                  <button type="button" class="button button-secondary" id="replayRestart" aria-label="Restart observed evidence replay">Restart</button>
+                  <input id="replayProgress" type="range" min="0" max="0" value="0" step="1" aria-label="Observed evidence replay progress" disabled />
+                  <span id="replayStatus" class="replay-status" aria-live="polite">No observed evidence to replay</span>
+                </div>
+                <div id="timeline" class="timeline-list"></div>
+              </section>
+            </div>
+
+            <aside class="detail-column" aria-label="Selected incident details">
+              <section class="panel inspector-panel" aria-labelledby="evidenceTitle">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">SELECTED ACTIVITY</p>
+                    <h2 id="evidenceTitle">Evidence inspector</h2>
+                  </div>
+                </div>
+                <div id="evidenceInspector"></div>
+              </section>
+
+              <section class="panel attack-panel" aria-labelledby="attackTitle">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">KNOWLEDGE RETRIEVAL</p>
+                    <h2 id="attackTitle">MITRE ATT&amp;CK</h2>
+                  </div>
+                </div>
+                <div id="attackMappings"></div>
+              </section>
+            </aside>
+
+            <section class="panel report-panel" aria-labelledby="reportTitle">
+              <div class="panel-heading report-heading">
+                <div>
+                  <p class="eyebrow">EVIDENCE-GROUNDED OUTPUT</p>
+                  <h2 id="reportTitle">Investigation report</h2>
+                </div>
+                <div class="report-actions">
+                  <button type="button" data-export="json" class="button button-secondary">Export JSON</button>
+                  <button type="button" data-export="md" class="button button-secondary">Export Markdown</button>
+                </div>
+              </div>
+              <div id="reportContent"></div>
+            </section>
+          </div>
+        </div>
+      </main>
     </div>
-    <div id="tl" data-tip="timeline"></div>
-    <input type="range" id="slider" min="0" max="30" step="0.01" value="0" data-tip="replay" />
-  </footer>
-  <script type="module" src="/src/main.js"></script>
-</body>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>

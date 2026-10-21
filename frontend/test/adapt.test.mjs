@@ -88,5 +88,27 @@ describe('Fix 2: Zero-stage Incident Adaptation & Rendering', () => {
     assert.equal(adapted.stages[2].stage_id, 'INC-0009-stage-3');
     assert.ok(headline(adapted).includes('172.20.10.10'));
   });
-});
 
+  test('host aliases do not label a compromised internal source as the attacker', () => {
+    const adapted = adapt({
+      incident_id: 'INC-ROLE',
+      hosts: [
+        { id: '10.0.0.5', ip: '10.0.0.5', zone: 'INTERNAL', role: 'compromised' },
+        { id: '203.0.113.8', ip: '203.0.113.8', zone: 'EXTERNAL', role: 'attacker infrastructure' },
+      ],
+      stages: [{
+        stage_id: 'INC-ROLE-stage-1',
+        start: '2026-10-21T09:00:00Z',
+        end: '2026-10-21T09:01:00Z',
+        src: '10.0.0.5',
+        dst: '203.0.113.8',
+        evidence: [],
+      }],
+    });
+
+    assert.equal(adapted.stages[0].src, 'H1');
+    assert.equal(adapted.stages[0].dst, 'ATK');
+    assert.equal(adapted.hosts[0].role, 'compromised');
+    assert.equal(adapted.hosts[1].role, 'attacker infrastructure');
+  });
+});

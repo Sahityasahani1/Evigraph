@@ -2,12 +2,10 @@ import * as THREE from 'three';
 import { colorOf } from '../config.js';
 import { ICONS, roleIcon } from '../ui/icons.js';
 import { STATUS } from '../ui/story.js';
+import { fitDistance, layoutIncident } from './layout.js';
 
-const ZONE_X = { EXTERNAL: -17, DMZ: -7, INTERNAL: 3 };
-const ZONE_BOX = { EXTERNAL: [0.3, 10, 16, -17.5], DMZ: [0.3, 10, 10, -7.5], INTERNAL: [13, 10, 14, 7.5] };
 const ZONE_LABEL = { EXTERNAL: ['INTERNET', 'outside, not trusted'], DMZ: ['DMZ', 'public-facing servers'], INTERNAL: ['INTERNAL', 'private network'] };
 const BASE = { EXTERNAL: 0xff5d6c, DMZ: 0x52e0a0, INTERNAL: 0x6fa8ff };
-const HOME = new THREE.Vector3(-1, 0, 0);
 
 function sprite(w, h, sx, sy) {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
@@ -40,7 +38,7 @@ export class NetworkScene {
     this.onSelect = onSelect; this.onHover = onHover;
     this.opt = { benign: true, packets: true, rotate: true, follow: true };
     this.t = 0; this.sel = null; this.nodes = {}; this.edges = {}; this.pickables = []; this.labels = {}; this.status = {};
-    this.cam = { th: 0.7, ph: 1.2, rad: 38 }; this.tgt = HOME.clone(); this.goal = HOME.clone(); this.goalRad = null;
+    this.cam = { th: 0.7, ph: 1.2, rad: 38 }; this.tgt = new THREE.Vector3(); this.goal = new THREE.Vector3(); this.goalRad = null;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -48,7 +46,7 @@ export class NetworkScene {
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 300);
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.6));
     const key = new THREE.PointLight(0x9d7bff, 2, 0); key.position.set(0, 20, 10); this.scene.add(key);
-    this._zones();
+    this.zoneGroup = new THREE.Group(); this.scene.add(this.zoneGroup);
     this.setTheme(document.documentElement.dataset.theme || 'dark');
     this.dyn = new THREE.Group(); this.scene.add(this.dyn);
 
@@ -58,15 +56,21 @@ export class NetworkScene {
     this.last = performance.now(); this.raf = requestAnimationFrame(n => this._loop(n));
   }
 
-  _zones() {
-    for (const [name, [w, h, d, x]] of Object.entries(ZONE_BOX)) {
-      const geo = new THREE.BoxGeometry(w, h, d);
+  _zones(zones) {
+    for (const child of this.zoneGroup.children) {
+      child.geometry?.dispose();
+      if (Array.isArray(child.material)) child.material.forEach(material => material.dispose());
+      else child.material?.dispose();
+    }
+    this.zoneGroup.clear();
+    for (const { name, width, height, depth, x } of zones) {
+      const geo = new THREE.BoxGeometry(width, height, depth);
       const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: name === 'EXTERNAL' ? 0x7a2a3a : 0x5b3fb0, transparent: true, opacity: 0.09 }));
       m.position.x = x;
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: name === 'EXTERNAL' ? 0xc0506a : 0x7c5cf0, transparent: true, opacity: 0.4 }));
       edges.position.x = x;
-      const l = zoneLabel(name); l.position.set(x, 6.6, 0);
-      this.scene.add(m, edges, l);
+      const l = zoneLabel(name); l.position.set(x, height / 2 + 1, 0);
+      this.zoneGroup.add(m, edges, l);
     }
   }
 
@@ -77,19 +81,20 @@ export class NetworkScene {
     this.grid.position.y = -6; this.scene.add(this.grid);
   }
 
-  _layout(hosts) {
-    const byZone = {}, pos = {};
-    hosts.forEach(h => { (byZone[h.zone] ||= []).push(h); });
-    for (const [z, list] of Object.entries(byZone)) list.forEach((h, i) => {
-      const a = i * 2.4, r = 1.5 + i * 0.7;
-      pos[h.id] = [(ZONE_X[z] ?? 0) + (z === 'INTERNAL' ? (i % 3) * 4 : 0), Math.sin(a) * r * 1.2, Math.cos(a) * r];
-    });
-    return pos;
-  }
-
   setIncident(inc) {
     this.dyn.clear(); this.nodes = {}; this.edges = {}; this.pickables = []; this.labels = {}; this.status = {}; this.sel = null;
-    const pos = this._layout(inc.hosts);
+    const layout = layoutIncident(inc.hosts);
+    this._zones(layout.zones);
+    this.bounds = layout.bounds;
+    this.fit = {
+      center: new THREE.Vector3(...layout.center),
+      rad: fitDistance(layout.bounds, this.camera.fov, innerWidth / innerHeight),
+    };
+    this.cam.rad = this.fit.rad;
+    this.tgt.copy(this.fit.center);
+    this.goal.copy(this.fit.center);
+    this.goalRad = this.fit.rad;
+    const pos = layout.positions;
     for (const h of inc.hosts) {
       const geo = h.role?.toLowerCase().includes('database') ? new THREE.CylinderGeometry(0.9, 0.9, 1.4, 20)
         : h.zone === 'EXTERNAL' ? new THREE.OctahedronGeometry(1.1) : new THREE.IcosahedronGeometry(0.9, 1);
@@ -138,7 +143,7 @@ export class NetworkScene {
   focus(stageId, force = false) {
     if (!this.opt.follow && !force) return;
     const e = stageId && this.edges[stageId];
-    if (!e) { this.goal.copy(HOME); this.goalRad = 36; return; }
+    if (!e) { this.goal.copy(this.fit?.center ?? this.tgt); this.goalRad = this.fit?.rad ?? 36; return; }
     this.goal.copy(e.curve.getPoint(0.5)); this.goalRad = 24;
   }
 
@@ -157,7 +162,7 @@ export class NetworkScene {
       const dx = e.clientX - drag[0], dy = e.clientY - drag[1]; moved += Math.abs(dx) + Math.abs(dy);
       this.cam.th -= dx * 0.006; this.cam.ph = Math.max(0.2, Math.min(2.9, this.cam.ph - dy * 0.006)); drag = [e.clientX, e.clientY];
     };
-    c.onwheel = e => { this.goalRad = null; this.cam.rad = Math.max(12, Math.min(70, this.cam.rad + e.deltaY * 0.03)); e.preventDefault(); };
+    c.onwheel = e => { this.goalRad = null; this.cam.rad = Math.max(12, Math.min(Math.max(70, this.fit?.rad * 1.5 || 70), this.cam.rad + e.deltaY * 0.03)); e.preventDefault(); };
     c.onpointerup = e => {
       drag = null; this.dragging = false; if (moved > 5) return;
       this.raycaster.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), this.camera);

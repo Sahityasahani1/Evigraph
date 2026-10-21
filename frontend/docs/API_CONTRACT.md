@@ -1,46 +1,79 @@
-# EviGraph Frontend ⇄ Backend Contract (draft v0.1)
+# EviGraph Dashboard API Contract
 
-Aligned with TRD 3.8 endpoints and 4.2 tables. Agree on this with Members 2 and 3, then change `src/api/mock.js` and `src/api/client.js` only.
-All timestamps are ISO-8601 UTC. IDs are stable strings (PRD FR-1.3).
+The dashboard is a vanilla ES-module application. `src/api/client.js` is the only
+module that makes API requests; display components consume the normalized shapes.
+The Vite development proxy forwards `/api/*` to the FastAPI service and strips the
+`/api` prefix.
 
-| Method | Path | Returns |
-|---|---|---|
-| GET | `/incidents` | `[{incident_id, score, start, end, status}]` |
-| GET | `/incidents/{id}` | Incident object (below) |
-| GET | `/incidents/{id}/evidence` | Not used yet (stage.evidence is embedded for now) |
-| POST | `/incidents/{id}/report` | Report object (below) |
+## Prepared incidents
 
-## Incident
-```json
-{
-  "incident_id": "INC-0042", "score": 0.93, "status": "open",
-  "start": "2026-10-13T14:02:00Z", "end": "2026-10-13T14:32:00Z",
-  "hosts": [{ "id": "WEB", "ip": "10.0.1.10", "zone": "DMZ", "role": "Web server" }],
-  "stages": [{
-    "stage_id": "STG-1", "order": 1,
-    "tactic": "Reconnaissance", "tactic_id": "TA0043", "behavior": "scan",
-    "src": "ATK", "dst": "WEB", "port": "1-1024",
-    "start": "...", "end": "...", "confidence": 0.91, "observed": true,
-    "summary": "412 short connections to 412 distinct ports within 3.5 minutes",
-    "evidence": [{ "flow_id": "flow_1001", "ts": "...", "pcap_sha256": "..." }],
-    "explanation": [{ "feature": "distinct dst ports (412)", "weight": 0.95 }]
-  }],
-  "background": [{ "src": "WS1", "dst": "WEB" }]
-}
-```
-- `zone` is one of `EXTERNAL | DMZ | INTERNAL` (drives 3D placement). `host.id` is what stages reference in `src`/`dst`.
-- `tactic` must match a key in `src/config.js` `TACTIC_COLORS` (unknown tactics get a neutral colour).
-- `explanation` text must be observable-only (PRD FR-6.5). The UI escapes all strings.
+| Method | Path | Dashboard use |
+| --- | --- | --- |
+| `GET` | `/incidents` | Incident list. The current service returns normalized incident objects. |
+| `GET` | `/incidents/{incident_id}` | Full incident hosts, stages, embedded evidence references, status, and provenance when present. |
+| `GET` or `POST` | `/incidents/{incident_id}/report` | Evidence-linked report claims, validation counts, ATT&CK retrieval results, and provenance. |
 
-## Report
-```json
-{
-  "report_id": "RPT-0042", "incident_id": "INC-0042",
-  "sentences": [{ "text": "...", "stage_id": "STG-1", "evidence_ids": ["flow_1001"] }],
-  "validation": { "valid": 6, "total": 6 },
-  "footer": { "input_sha256": "...", "manifest_id": "run_ab12cd34", "attack_version": "v15" }
-}
-```
+Prepared incident records contain embedded `stage.evidence` metadata. There is no
+prepared-incident endpoint for looking up the complete raw flow record, so the
+dashboard does not invent absent ports, protocol values, or evidence hashes.
 
-## Auth
-If the backend uses tokens (TRD 3.8), store one in `localStorage['evigraph_token']`; it is sent as `Authorization: Bearer`.
+## Fresh investigations
+
+| Method | Path | Dashboard use |
+| --- | --- | --- |
+| `POST` | `/investigations` | Stream a flow CSV/Parquet or PCAP/PCAPNG file. `X-Filename` and `X-Detector` headers identify the file and `xgb`/`gnn` model. Returns a queued job. |
+| `GET` | `/investigations/{job_id}` | Poll status, stage, percentage, and final result. |
+| `GET` | `/investigations/{job_id}/incidents` | Incident records with fresh inference provenance and model metadata. |
+| `GET` | `/investigations/{job_id}/incidents/{incident_id}/report` | Evidence-linked report and ATT&CK retrieval result for the fresh incident. |
+| `GET` | `/investigations/{job_id}/incidents/{incident_id}/evidence/{flow_id}` | Retrieve an incident-linked flow, evidence ID, and source-file SHA-256. |
+| `GET` | `/health` | API liveness check. |
+
+The dashboard preserves the `flow_id`, timestamp, evidence references, and source
+hash returned by these endpoints. A source SHA-256 is an input fingerprint; it is
+not shown as a flow-level digest.
+
+## Incident view fields
+
+The normalizer keeps the original fields and canonicalizes tactic names and
+timestamps. The UI uses the following fields where present:
+
+- Incident: `incident_id`, `status`, `score`, optional `severity`/`confidence`,
+  `start`, `end`, `hosts`, `total_alerts`, `source_sha256`, `inference_source`,
+  `detection_model`.
+- Host: `id`, `ip`, `role`, `zone`.
+- Stage: `stage_id`, `order`, `tactic`, `tactic_id`, `src`, `dst`, `port`,
+  `start`, `end`, `confidence`, `observed`, `interpretation_status`, `behavior`,
+  `summary`, `evidence`.
+- Evidence: `flow_id`, `evidence_id`, `ts`/`timestamp`, flow attributes and
+  available hashes.
+
+Unknown fields remain absent in the UI rather than receiving synthetic values.
+Incident severity is taken from a returned severity field when present; otherwise
+the UI labels the numeric incident score separately and uses score bands only for
+the severity filter.
+
+## Report and ATT&CK fields
+
+- Report claims use `sentences[]` with `text`, optional `stage_id`, and
+  `evidence_ids[]`; the UI links flow IDs back to the evidence inspector.
+- `validation.valid`, `validation.total`, and `validation.rejected` drive the
+  displayed validation summary when returned.
+- Deterministic fallback claims are counted as valid only when their citations
+  belong to that incident stage and resolve to records in the flow store.
+- `attack_matches` is rendered as retrieved metadata. Candidate techniques remain
+  unconfirmed unless the backend explicitly returns a confirmed mapping. Missing
+  evidence references and unavailable retrieval indexes are called out.
+- JSON and Markdown exports are generated from the report payload. The backend
+  does not expose a PDF export endpoint, so the dashboard does not offer PDF.
+
+## Demo and error behavior
+
+The prepared/mock path remains available through the existing `VITE_USE_MOCK`
+configuration and is labeled in the workspace. Fresh investigations are labeled
+separately and retain their job ID for evidence/report lookups. API errors are
+displayed with retry actions where retry is safe; loading states do not block
+incident browsing.
+
+The current backend has no standalone report-validation endpoint, no PDF export,
+and no raw-flow lookup for prepared incidents. The dashboard shows those
+limitations instead of implying those capabilities exist.
