@@ -103,7 +103,7 @@ The compliance audit has been strictly reconciled against the authoritative `PRD
 
 | Threshold | Target Success Metric | Status | Empirical Evidence & Observations |
 |:---:|:---|:---:|:---|
-| **1** | Calibrated XGBoost baseline achieves macro-F1 $\ge 0.85$ under temporal split on CICIDS2017 | **PASS** | Baseline XGBoost achieves **0.912** macro-F1; Tri-Pillar Meta-Ensemble achieves **0.938** macro-F1 (`docs/benchmarks.md`). |
+| **1** | Calibrated XGBoost baseline achieves macro-F1 $\ge 0.85$ under temporal split on CICIDS2017 | **UNVERIFIED** | No real labeled CICIDS2017 flow CSV or checkpoint-linked training/evaluation record is present in the workspace. Earlier reported scores are not supported by reproducible detector evaluation artifacts and must not be treated as verified results. |
 | **2** | Attack-chain recovery rate $\ge 80\%$ on multi-stage attack scenarios | **PASS** | Validated in `tests/test_causal_provenance.py` (6 passed) and `tests/test_eval_data.py` (`test_answer_key_matches_generated_data` verified 100% stage and pivot recovery). |
 | **3** | $100\%$ of claims in templated reports and $\ge 95\%$ of claims in LLM reports cite verified evidence IDs | **PASS** | Validated in `tests/test_report.py` (19 passed); citation validator enforces **100.0%** citation verification rate on admitted claims. |
 | **4** | $0\%$ feature reliance on raw IP addresses or absolute timestamps in tabular detectors | **PASS** | Validated by `tests/data/test_contract_member2.py` asserting zero IP/timestamp leakage in tabular feature matrices. |
@@ -136,6 +136,13 @@ No requirement is marked `FAIL`. Only the following 2 items remain `PARTIAL`:
 ---
 
 ## 6. Technical Dependency Note: ATT&CK Semantic Retrieval Index
+
+### Model and evaluation limitations
+
+- Training-data provenance for the frozen XGBoost and migrated GNN checkpoints is unknown. CICIDS2017 results could overlap with model training, validation, calibration, or threshold selection; any future score on it is diagnostic-only unless provenance establishes independence.
+- Independent real-world detection accuracy has not been established. The migrated legacy GNN's historical graph-window and training provenance are unknown; its current 300-second inference window does not establish its training window.
+- ATT&CK retrieval produces inferred candidates for analyst review, not confirmed techniques or observed ground truth.
+- Raw CICFlowMeter CSVs must be normalized to the detector's canonical feature names before fresh inference. Dataset labels must remain separate from model inputs.
 
 * **Component:** `src/agent/attack_rag.py` / `tests/test_attack_rag.py`
 * **Status:** Operational via fallback; technical dependency for semantic search tests.
