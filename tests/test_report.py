@@ -145,3 +145,18 @@ def test_finding_calling_attacker_server_compromised_is_rejected():
 def test_finding_about_an_internal_sender_may_say_compromised():
     r = generate_report(make_agent(one("The host 10.0.0.5 was possibly compromised.")), "INC-001")
     assert r["accepted"]
+
+
+def test_finding_calling_the_attacker_server_a_target_is_rejected():
+    r = generate_report(make_agent(one("The host 203.0.113.50 was targeted by the attackers.")), "INC-001")
+    assert not r["accepted"] and "attacker-side" in r["rejected"][0]["problems"][0]
+
+
+def test_finding_about_an_internal_host_may_use_the_word_targets():
+    r = generate_report(make_agent(one("The host 10.0.0.5 sent traffic to several targets.")), "INC-001")
+    assert r["accepted"]
+
+
+def test_finding_saying_the_attacker_was_targeted_is_rejected_in_either_wording():
+    r = generate_report(make_agent(one("The attackers targeted 203.0.113.50.")), "INC-001")
+    assert not r["accepted"] and "attacker-side" in r["rejected"][0]["problems"][0]

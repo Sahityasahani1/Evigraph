@@ -147,7 +147,18 @@ def text_problems(text, tools, known_ips, source_text, flow_ids=(), technique_id
     return problems
 
 
-def validate_findings(findings, tools, known_ips, source_text="", compromised=None):
+_FILLER = r"(?:(?:a|an|the|also|possibly|likely|then|repeatedly|been|being)\s+)*"
+
+
+def _called_victim(claim: str, ip: str) -> bool:
+    """True if the claim says this host was the target or victim (not that it targeted someone)."""
+    p = re.escape(ip)
+    passive = rf"{p}\s+(?:was|were|is|are)\s+{_FILLER}(?:targeted|attacked|breached|victims?|targets?)\b"
+    obj = rf"\b(?:targeted|attacked|breached)\s+(?:the\s+)?(?:host\s+|server\s+)?{p}"
+    return bool(re.search(passive, claim, re.IGNORECASE) or re.search(obj, claim, re.IGNORECASE))
+
+
+def validate_findings(findings, tools, known_ips, source_text="", compromised=None, attacker_side=None):
     accepted, rejected = [], []
     for f in findings:
         problems = text_problems(
@@ -160,6 +171,12 @@ def validate_findings(findings, tools, known_ips, source_text="", compromised=No
             if wrong:
                 problems.append("calls hosts compromised that never sent attack traffic "
                                 f"from inside the network: {wrong}")
+        if attacker_side:
+            wrong = sorted({ip for ip in IP_RE.findall(f.claim)
+                            if ip in attacker_side and _called_victim(f.claim, ip)})
+            if wrong:
+                problems.append("calls attacker-side hosts targets or victims "
+                                f"(they are attacker servers or attackers): {wrong}")
         if problems:
             rejected.append({"finding": f, "problems": problems})
         else:
@@ -315,7 +332,9 @@ def generate_report(agent, incident_id: str, audit_path=None) -> dict:
         findings, parse_error = [], True
 
     known_ips = set(tools.incidents[incident_id].hosts)
-    accepted, rejected = validate_findings(findings, tools, known_ips, source, set(roles["compromised"]))
+    attacker_side = set(roles["infra"]) | set(roles["attackers"])
+    accepted, rejected = validate_findings(findings, tools, known_ips, source,
+                                           set(roles["compromised"]), attacker_side)
 
     base = build_report(briefing, accepted, rejected)
     summary, summary_note = _summarise(agent, base, known_ips)

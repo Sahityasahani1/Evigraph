@@ -17,6 +17,7 @@ CATEGORIES = [
     ("IPs not in this incident", "invented IP"),
     ("numbers not in", "invented number"),
     ("compromised", "wrong 'compromised' role"),
+    ("attacker-side", "attacker called a victim"),
 ]
 
 
