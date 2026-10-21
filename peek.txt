@@ -1,0 +1,334 @@
+﻿===== C:\dev\evigraph\outputs\certified_forensic_verdict.json
+version: "1.0"
+auditor: "EviGraph Adversarial Courtroom Cross-Examiner (Defense Agent)"
+standard: "FRE 902(13)/(14) & ISO/IEC 27037 Digital Forensic Admissibility"
+evaluated_at: "2026-10-20T10:36:39.895114+00:00"
+verdict: "ADMISSIBLE_IN_COURT"
+admissibility_score: 1.0
+verdict_description: "Flawless forensic validity. All claims are backed by RFC-6962 Merkle 
+session_merkle_root: "32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9"
+gate_scores: dict(4)
+  gate1_cryptographic_merkle: 1.0
+  gate2_protocol_feasibility: 1.0
+  gate3_temporal_causal_dag: 1.0
+  gate4_telemetry_fact_checking: 1.0
+citation_statistics: dict(4)
+  total_citations_scanned: 84
+  unique_citations_audited: 42
+  sustained_objections_count: 0
+  overruled_objections_count: 116
+cross_examination_objections: list(116)
+  [0]:
+    gate: "Gate 1 (Cryptographic Admissibility)"
+    type: "CHALLENGE_MERKLE_ROOT_CONFORMANCE"
+    status: "OVERRULED"
+    flow_id: "flw_scan_0080"
+    reason: "Mathematical audit path verified: recomputed root '32b6c1c08e443635..
+===== C:\dev\evigraph\outputs\citation_validation_results.json
+total_citations: 84
+unique_citations_count: 42
+verified_count: 84
+hallucinated_count: 0
+citation_faithfulness_pct: 100.0
+passed_threshold: true
+verified_flow_ids: list(42)
+  [0]:
+hallucinated_flow_ids: list(0)
+===== C:\dev\evigraph\outputs\counterfactual_simulation_results.json
+version: "1.0"
+generator: "EviGraph Counterfactual Resilience Simulator"
+generated_at: "2026-10-20T10:26:02.478943+00:00"
+total_incidents_simulated: 2
+total_counterfactual_scenarios: 8
+average_defensive_resilience_index: 0.3937
+discovered_single_points_of_failure: 3
+simulations: list(8)
+  [0]:
+    policy_name: "Firewall Policy: Block Port 22"
+    incident_id: "INC-0001"
+    intervention_type: "BLOCK_PORT"
+    parameter: 22
+    baseline_steps_count: 20
+    baseline_severity: 19.018
+    residual_steps_count: 20
+    residual_severity: 19.018
+    defensive_resilience_index: 0.0
+    attack_extinguished: false
+    single_point_of_failure: false
+    elements_severed_count: 12
+    residual_attack_chain: list(20)
+      [0]:
+        step: 1
+        flow_id: "flw_scan_0080"
+        source: "172.16.0.105"
+        target: "192.168.10.50"
+        timestamp: "2026-10-15 09:11:04.000"
+        dst_port: 100
+        predicted_class: "PortScan"
+        attack_stage: "Reconnaissance"
+        risk_score: 0.9509
+===== C:\dev\evigraph\outputs\countermeasure_plan.json
+version: "1.0"
+generator: "EviGraph Autonomous Surgical Containment Engine"
+generated_at: "2026-10-20T10:25:53.995301+00:00"
+strategy: "Min-Cut Graph Bottleneck & Zero-Downtime Blast-Radius Optimization"
+total_incidents_analyzed: 2
+total_containment_rules_synthesized: 21
+incident_plans: list(2)
+  [0]:
+    incident_id: "INC-0001"
+    entry_point: "172.16.0.105"
+    severity_score: 0.8256
+    attack_classes: list(2)
+      [0]:
+    containment_actions_count: 20
+    actions: list(20)
+      [0]:
+        rule_id: "RULE-INC-0001-01"
+        action_tier: "Tier 1: Surgical L4 Drop"
+        action_type: "EDGE_DROP"
+        target_attacker: "172.16.0.105"
+        target_victim: "192.168.10.50"
+        destination_port: 100
+        protocol: "TCP"
+        rationale: "Severing communication on port 100 halts Reconnaissance transition."
+        victim_blast_radius: {"host_ip": "192.168.10.50", "blast_radius_score": 0.262, "impact_leve
+        synthesized_commands: {"linux_iptables": "iptables -I INPUT -s 172.16.0.105 -d 192.168.10.50
+===== C:\dev\evigraph\outputs\forensic_merkle_certificate.json
+version: "1.0"
+standard: "RFC-6962 Merkle Audit Path"
+hash_algorithm: "SHA-256"
+session_merkle_root: "32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9"
+total_telemetry_leaves: 342
+tree_depth: 10
+generated_at: "2026-10-20T09:52:27.412304+00:00"
+incident_evidence_proofs: dict(2)
+  INC-0001: list(32)
+    [0]:
+      flow_id: "flw_scan_0080"
+      leaf_hash: "cddf7b6d8dd9de9b604e77405edcc988f28bf04daef9836686a0a6b6afb83c86"
+      leaf_index: 310
+      root_hash: "32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9"
+      canonical_repr: "flow_id=flw_scan_0080|src_ip=172.16.0.105|dst_ip=192.168.10.50|src_po
+      proof_steps: [{"sibling_hash": "9a60c2a967c42caa833139a85df103614c0e584032c10cab58e
+  INC-0002: list(10)
+    [0]:
+      flow_id: "flw_dos_0040"
+      leaf_hash: "89ee2082dd85026eb65d2a6166252c3bb735b8dda3fe9cd3e2fcc6fbb64e6ae5"
+      leaf_index: 300
+      root_hash: "32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9"
+      canonical_repr: "flow_id=flw_dos_0040|src_ip=172.16.0.120|dst_ip=192.168.10.80|src_por
+      proof_steps: [{"sibling_hash": "2f2a9de1f8b312f9fb936a0347e77c3767a1d8f95e6cedf46eb
+===== C:\dev\evigraph\outputs\incident_cases.json
+version: "1.0"
+generator: "EviGraph Member 2 (Detection & Graph Engine)"
+generated_at: "2026-10-20T09:52:27.389995+00:00"
+total_incidents: 2
+incidents: list(2)
+  [0]:
+    incident_id: "INC-0001"
+    incident_score: 0.8256
+    status: "candidate"
+    suspected_entry_point: "172.16.0.105"
+    start_time: "2026-10-15T09:11:04"
+    end_time: "2026-10-15T09:16:26.500000"
+    duration_seconds: 322.5
+    total_alerts: 32
+    affected_hosts: list(2)
+      [0]:
+    attack_classes: list(2)
+      [0]:
+    evidence_flow_ids: list(32)
+      [0]:
+    evidence_files: list(1)
+      [0]:
+    subgraph: dict(4)
+      node_count: 2
+      edge_count: 32
+      nodes: [{"id": "172.16.0.105", "role": "attacker", "in_degree": 0, "out_degre
+      edges: [{"edge_id": "flw_scan_0080", "source": "172.16.0.105", "target": "192
+    causal_provenance: dict(6)
+      causal_dag_nodes_count: 32
+      causal_dag_edges_count: 256
+      root_cause_entry_flow: "flw_scan_0080"
+      campaign_duration_seconds: 15.2
+      primary_attack_chain: [{"step": 1, "flow_id": "flw_scan_0080", "source": "172.16.0.105", "ta
+      causal_edges: [{"source_flow": "flw_scan_0080", "target_flow": "flw_scan_0081", "tra
+    primary_attack_chain: list(20)
+      [0]:
+        step: 1
+        flow_id: "flw_scan_0080"
+        source: "172.16.0.105"
+        target: "192.168.10.50"
+        timestamp: "2026-10-15 09:11:04.000"
+        dst_port: 100
+        predicted_class: "PortScan"
+        attack_stage: "Reconnaissance"
+        risk_score: 0.9509
+    root_cause_flow: "flw_scan_0080"
+merkle_root: "32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9"
+merkle_leaves_count: 342
+cryptographic_standard: "SHA-256 Binary Merkle Tree (RFC 6962)"
+causal_provenance_engine: "Lamport Temporal DAG & MITRE FSM v1.0"
+===== C:\dev\evigraph\outputs\privacy_preserving_proof_certificate.json
+version: "1.0"
+standard: "EviGraph Privacy-Preserving Merkle Proof-of-Intrusion (Zero-Topology 
+compliance: list(3)
+  [0]:
+generated_at: "2026-10-20T10:25:56.592144+00:00"
+session_merkle_root: "32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9"
+total_leaves_anchored: 342
+redacted_evidence_count: 10
+enterprise_selective_disclosure_key: "1fdf578ff91b31919a673e259700f2b992a0b6b5c3817eecbeae6295a2bca36e"
+redacted_intrusion_proofs: list(10)
+  [0]:
+    flow_id: "flw_scan_0080"
+    incident_id: "INC-0001"
+    threat_classification: dict(4)
+      attack_class: "PortScan"
+      risk_score: 0.9509
+      protocol: 6
+      timestamp: "2026-10-15 09:11:04.000"
+    privacy_controls: dict(3)
+      redacted_fields: ["dst_ip", "src_port", "src_ip"]
+      commitments: {"src_ip": {"commitment_hash": "2939cf68c0bf4974cccad7b822a0ed9770f7b0
+      redacted_canonical_view: "flow_id=flw_scan_0080|src_ip=[REDACTED]|dst_ip=[REDACTED]|src_port=[R
+    cryptographic_verification: dict(4)
+      leaf_hash: "cddf7b6d8dd9de9b604e77405edcc988f28bf04daef9836686a0a6b6afb83c86"
+      leaf_index: 310
+      root_hash: "32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9"
+      proof_steps: [{"sibling_hash": "9a60c2a967c42caa833139a85df103614c0e584032c10cab58e
+===== forensic_incident_report.md
+# EviGraph Forensic Incident Investigation Report
+**Generated:** 2026-10-20 10:36:38 UTC  
+**Engine:** EviGraph Member 3 Forensic Agent (Grounded RAG)  
+**Case Bundle Source:** `incident_cases.json`  
+**Cryptographic Merkle Root:** `32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9`  
+**Total Incidents Identified:** 2
+
+---
+
+## 1. Executive Summary
+
+### Incident INC-0001 (Severity Risk: 0.8256 / 1.0000)
+- **Suspected Entry Point:** `172.16.0.105` (observed participating in 32 network flows)
+- **Target / Affected Hosts:** `172.16.0.105`, `192.168.10.50`
+- **Primary Attack Tactics:** PortScan, SSH-Patator
+- **Temporal Exposure:** 322.5 seconds across 32 correlated anomaly alerts.
+
+### Incident INC-0002 (Severity Risk: 0.7756 / 1.0000)
+- **Suspected Entry Point:** `172.16.0.120` (observed participating in 10 network flows)
+- **Target / Affected Hosts:** `192.168.10.80`, `172.16.0.120`
+- **Primary Attack Tactics:** DoS-Slowloris
+- **Temporal Exposure:** 18.0 seconds across 10 correlated anomaly alerts.
+
+---
+
+## 2. Technical Reconstruction & MITRE ATT&CK Mapping
+
+### Attack Progression for INC-0001
+
+| Step | Timestamp | Flow ID | Source | Target | Port | Protocol | Risk Score | MITRE Tactic | Technique |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | 2026-10-15 09:11:04.000 | `flw_scan_0080` [E:flw_scan_0080] | `172.16.0.105` | `192.168.10.50` | 100 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+| 1 | 2026-10-15 09:11:04.800 | `flw_scan_0081` [E:flw_scan_0081] | `172.16.0.105` | `192.168.10.50` | 101 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+| 1 | 2026-10-15 09:11:05.600 | `flw_scan_0082` [E:flw_scan_0082] | `172.16.0.105` | `192.168.10.50` | 102 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+| 1 | 2026-10-15 09:11:06.400 | `flw_scan_0083` [E:flw_scan_0083] | `172.16.0.105` | `192.168.10.50` | 103 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+| 1 | 2026-10-15 09:11:07.200 | `flw_scan_0084` [E:flw_scan_0084] | `172.16.0.105` | `192.168.10.50` | 104 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+| 1 | 2026-10-15 09:11:08.000 | `flw_scan_0085` [E:flw_scan_0085] | `172.16.0.105` | `192.168.10.50` | 105 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+| 1 | 2026-10-15 09:11:08.800 | `flw_scan_0086` [E:flw_scan_0086] | `172.16.0.105` | `192.168.10.50` | 106 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+| 1 | 2026-10-15 09:11:09.600 | `flw_scan_0087` [E:flw_scan_0087] | `172.16.0.105` | `192.168.10.50` | 107 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+| 1 | 2026-10-15 09:11:10.400 | `flw_scan_0088` [E:flw_scan_0088] | `172.16.0.105` | `192.168.10.50` | 108 | 6 | 0.951 | Discovery (TA0007) | Network Service Discovery (`T1046`) |
+===== courtroom_cross_examination.md
+# Certified Forensic Courtroom Verdict & Adversarial Audit
+
+> **Standard of Proof:** Federal Rules of Evidence Rule 902(13)/(14) & ISO/IEC 27037: Guidelines for Identification, Collection, Acquisition and Preservation of Digital Evidence.
+
+---
+
+## 1. Executive Judicial Verdict
+
+- **Admissibility Verdict:** `ADMISSIBLE_IN_COURT`
+- **Admissibility Score:** **100.00%**
+- **Session Merkle Root Digest:** `32b6c1c08e4436351d7c13f513b5bfff66b8f42e5d01a8d8239a15770dc6c5d9`
+- **Audit Timestamp:** `2026-10-20T10:36:39.895114+00:00`
+- **Findings:** Flawless forensic validity. All claims are backed by RFC-6962 Merkle inclusion proofs, physically valid Layer-4 protocols, monotonic causal DAG transitions, and verified telemetry.
+
+### Defense Gate Evaluation Matrix
+
+| Verification Gate | Evidentiary Requirement | Score | Gate Status |
+| :--- | :--- | :--- | :--- |
+| **Gate 1: Cryptographic Integrity** | RFC-6962 SHA-256 Merkle Inclusion Proofs | 100.0% | PASSED |
+| **Gate 2: Protocol Feasibility** | RFC Layer-4 Port & Transport Conformity | 100.0% | PASSED |
+| **Gate 3: Causal Provenance DAG** | Lamport Monotonicity & Reachable Topological Path | 100.0% | PASSED |
+| **Gate 4: Telemetry Fact-Checking** | Zero Uncited Assertions & Metric Conformance | 100.0% | PASSED |
+
+**Audit Statistics:** Total Citations Audited: `42` | Sustained Objections: `0` | Overruled Objections: `116`
+
+---
+
+## 2. Adversarial Cross-Examination Objections Log
+
+| Gate | Objection / Challenge Type | Ruling | Evidence Subject | Ruling Details |
+| :--- | :--- | :--- | :--- | :--- |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0080` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0081` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0082` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0083` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0084` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0085` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0086` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0087` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+| Gate 1 | `CHALLENGE_MERKLE_ROOT_CONFORMANCE` | **OVERRULED** | `flw_scan_0088` | Mathematical audit path verified: recomputed root '32b6c1c08e443635...' matches certified root. |
+===== agent_log
+Total Evidence Citations : 84
+Unique Citations         : 42
+Verified Evidence Flows  : 84
+Hallucinated Flow IDs    : 0
+Faithfulness Score       : 100.0% (Target: >= 95%)
+============================================================
+[ForensicAgent] Citation validation metrics saved to: C:\dev\evigraph\outputs\citation_validation_results.json
+
+--- Running Adversarial Courtroom Cross-Examiner (FRE 902 / ISO 27037) ---
+=================================================================
+   EVIGRAPH: DUAL-AGENT ADVERSARIAL COURTROOM AUDITOR (USP)
+   Standard: FRE 902(13)/(14) & ISO/IEC 27037 Digital Forensics
+=================================================================
+
+[CourtroomAuditor] Final Admissibility Verdict: ADMISSIBLE_IN_COURT
+[CourtroomAuditor] Composite Admissibility Score: 100.00%
+
+Defense Gate Breakdown:
+  - gate1_cryptographic_merkle: 100.0% [PASSED]
+  - gate2_protocol_feasibility: 100.0% [PASSED]
+  - gate3_temporal_causal_dag: 100.0% [PASSED]
+  - gate4_telemetry_fact_checking: 100.0% [PASSED]
+
+[CourtroomAuditor] Certified Verdict exported to: C:\dev\evigraph\outputs\certified_forensic_verdict.json
+[CourtroomAuditor] Cross-examination transcript saved to: C:\dev\evigraph\outputs\courtroom_cross_examination.md
+===== courtroom_log
+~~
+    + CategoryInfo           
+   : NotSpecified: (<frozen  
+   runpy>:...table behavio   
+ ur:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+=================================================================
+   EVIGRAPH: DUAL-AGENT ADVERSARIAL COURTROOM AUDITOR (USP)
+   Standard: FRE 902(13)/(14) & ISO/IEC 27037 Digital Forensics
+=================================================================
+
+[CourtroomAuditor] Final Admissibility Verdict: ADMISSIBLE_IN_COURT
+[CourtroomAuditor] Composite Admissibility Score: 100.00%
+
+Defense Gate Breakdown:
+  - gate1_cryptographic_merkle: 100.0% [PASSED]
+  - gate2_protocol_feasibility: 100.0% [PASSED]
+  - gate3_temporal_causal_dag: 100.0% [PASSED]
+  - gate4_telemetry_fact_checking: 100.0% [PASSED]
+
+[CourtroomAuditor] Certified Verdict exported to: C:\dev\evigraph\outputs\certified_forensic_verdict.json
+[CourtroomAuditor] Cross-examination transcript saved to: C:\dev\evigraph\outputs\courtroom_cross_examination.md
