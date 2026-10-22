@@ -16,6 +16,8 @@ data/processed/
 *.pcapng
 *.parquet
 *.csv
+*.zip
+*.tar.gz
 
 # Exceptions: keep sample fixtures
 !data/samples/
@@ -33,6 +35,7 @@ models/*.joblib
 # Logs and outputs
 *.log
 outputs/*.json
+outputs/*.md
 !outputs/.gitkeep
 
 # IDE and OS
