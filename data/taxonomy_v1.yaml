@@ -1,0 +1,49 @@
+version: "1.0"
+name: "EviGraph Canonical Attack Taxonomy"
+description: "Hierarchical taxonomy mapping raw intrusion detection labels to standardized forensic attack families."
+
+mappings:
+  # Normal / Benign
+  "BENIGN": "BENIGN"
+  "Normal": "BENIGN"
+  "benign": "BENIGN"
+
+  # Reconnaissance / Scans
+  "PortScan": "PortScan"
+  "portscan": "PortScan"
+  "IP Sweeps": "Reconnaissance"
+
+  # Brute Force
+  "SSH-Patator": "Brute-Force"
+  "FTP-Patator": "Brute-Force"
+  "Patator": "Brute-Force"
+
+  # Denial of Service (DoS)
+  "DoS Slowloris": "DoS"
+  "DoS-Slowloris": "DoS"
+  "DoS Hulk": "DoS"
+  "DoS-Hulk": "DoS"
+  "DoS GoldenEye": "DoS"
+  "DoS-GoldenEye": "DoS"
+  "DoS slowhttptest": "DoS"
+  "DoS-slowhttptest": "DoS"
+  "Heartbleed": "Heartbleed"
+
+  # Distributed Denial of Service (DDoS)
+  "DDoS": "DDoS"
+  "ddos": "DDoS"
+
+  # Web Attacks
+  "Web Attack - Brute Force": "Web-Attack"
+  "Web Attack - XSS": "Web-Attack"
+  "Web Attack - Sql Injection": "Web-Attack"
+  "Web Attack-Brute Force": "Web-Attack"
+  "Web Attack-XSS": "Web-Attack"
+  "Web Attack-Sql Injection": "Web-Attack"
+
+  # Malware / Infiltration / Botnets
+  "Infiltration": "Infiltration"
+  "Bot": "Botnet"
+  "Botnet": "Botnet"
+
+default_family: "Unknown"
