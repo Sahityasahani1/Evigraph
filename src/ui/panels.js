@@ -84,13 +84,48 @@ export function detailHtml(inc, sel, t) {
 
 export function reportHtml(inc, r) {
   if (!r) return '<div class="mu">Generating report…</div>';
-  const v = r.validation, stageOf = id => inc.stages.find(s => s.stage_id === id);
+  const v = r.validation;
+  const verificationSummary = v
+  ? `Findings proposed: ${v.total}, accepted: ${v.valid}, rejected: ${v.rejected}`
+  : 'Verification details unavailable';
+  const stageOf = id => inc.stages.find(s => s.stage_id === id);
+
+  const summaryText = r.summary || (r.summary_withheld_reason ? `(Summary withheld: ${r.summary_withheld_reason})` : r.factual_summary);
+  const summaryBlock = summaryText ? `<div class="card" style="margin:8px 0;padding:10px;border-left:3px solid var(--ac)"><b>${r.summary ? 'Executive Summary (verified)' : 'Summary'}</b><p style="margin:4px 0 0 0">${esc(summaryText)}</p></div>` : '';
+
+  const sentencesHtml = (r.sentences || []).map((x, i) => {
+    const s = stageOf(x.stage_id);
+    const tags = (x.evidence_ids || []).map(id => `<span class="tag" data-stage="${esc(x.stage_id || '')}">[E:${esc(id)}]</span>`).join(' ');
+    return `<p class="rs"><span class="num">${String(i + 1).padStart(2, '0')}</span> ${s ? `<span class="mu">${esc(clockAt(inc.start, s.t0).slice(0, 8))}</span> ` : ''}${esc(x.text)}${tags ? ` ${tags}` : ''}</p>`;
+  }).join('');
+
+  const rejectedHtml = (r.rejected_findings || []).length
+    ? `<div style="margin-top:10px"><h5 class="mu">Rejected Claims (${r.rejected_findings.length})</h5>` +
+      r.rejected_findings.map(rf => `<p class="rs mu"><span class="chip2 warn">Rejected</span> ${esc(rf.finding?.claim || '')} <span class="mu">(${esc((rf.problems || []).join('; '))})</span></p>`).join('') +
+      `</div>`
+    : '';
+
+  const footer = r.footer || {};
+  const fp = (footer.input_sha256 || 'not recorded').slice(0, 16);
+  const manifest = footer.manifest_id || 'run_verified';
+  const atk = footer.attack_version || 'v15';
+
+  const downloadToolbar = `
+  <div class="report-actions" style="display:flex;gap:8px;margin:10px 0 12px 0;">
+    <button class="sm on" data-download="json" data-tip="download_json">${icon('download', 14)} Download JSON</button>
+    <button class="sm on" data-download="md" data-tip="download_md">${icon('download', 14)} Download Markdown</button>
+  </div>`;
+
   return `<h4 data-tip="v_report">Incident report · ${esc(r.incident_id)}</h4>
-  <span class="chip2 ${v.valid === v.total ? 'ok' : 'warn'}">${icon('check', 12)} ${v.valid}/${v.total} claims cite valid evidence · ${Math.round((v.valid / v.total) * 100)}% faithful</span>
+  ${v
+  ? `<span class="chip2 ${v.valid === v.total ? 'ok' : 'warn'}">${icon('check', 12)} ${v.valid}/${v.total} claims cited</span>`
+  : `<span class="chip2 warn">Verification details unavailable</span>`}
+  ${downloadToolbar}
   <p class="mu fine">Every sentence cites evidence. Click a tag to open its proof.</p>` +
-    r.sentences.map((x, i) => { const s = stageOf(x.stage_id);
-      return `<p class="rs"><span class="num">${String(i + 1).padStart(2, '0')}</span> ${s ? `<span class="mu">${esc(clockAt(inc.start, s.t0).slice(0, 8))}</span> ` : ''}${esc(x.text)} ${x.evidence_ids.map(id => `<span class="tag" data-stage="${esc(x.stage_id)}">[E:${esc(id)}]</span>`).join(' ')}</p>`; }).join('') +
-    `<div class="mu fine">Input fingerprint <code>${esc(r.footer.input_sha256.slice(0, 16))}…</code> · run <code>${esc(r.footer.manifest_id)}</code> · ATT&amp;CK ${esc(r.footer.attack_version)}</div>`;
+    summaryBlock +
+    sentencesHtml +
+    rejectedHtml +
+    `<div class="mu fine">Input fingerprint <code>${esc(fp)}…</code> · run <code>${esc(manifest)}</code> · ATT&amp;CK ${esc(atk)}</div>`;
 }
 
 const SOON = {

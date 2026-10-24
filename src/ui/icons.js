@@ -30,6 +30,7 @@ export const ICONS = {
   next: ['M18 5v14M6 5l9 7-9 7z'],
   copy: [R(9, 9, 11, 11), 'M5 15V5h10'],
   check: ['M5 12l5 5 9-10'],
+  download: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M7 10l5 5 5-5', 'M12 15V3'],
 };
 export const icon = (name, size = 18) =>
   `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(ICONS[name] || ICONS.help).map(d => `<path d="${d}"/>`).join('')}</svg>`;

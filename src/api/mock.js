@@ -29,11 +29,94 @@ const stages = [
 const incident = { incident_id: 'INC-0042', score: .93, status: 'open', start: START, end: at(30), hosts, stages,
   background: [['WS1', 'WEB'], ['WS3', 'FS'], ['WS1', 'DB'], ['WS3', 'WEB']].map(([src, dst]) => ({ src, dst })) };
 
-export const mockList = () => [{ incident_id: incident.incident_id, score: incident.score, start: incident.start, end: incident.end, status: incident.status }];
-export const mockIncident = () => structuredClone(incident);
-export const mockReport = () => ({
-  report_id: 'RPT-0042', incident_id: incident.incident_id,
-  sentences: stages.map(s => ({ text: `${s.summary}.${s.observed ? '' : ' (inferred)'}`, stage_id: s.stage_id, evidence_ids: s.evidence.map(e => e.flow_id) })),
-  validation: { valid: stages.length, total: stages.length },
-  footer: { input_sha256: hash('cicids-lab.pcap'), manifest_id: 'run_' + hash('m1').slice(0, 8), attack_version: 'v15' },
-});
+const inc0009Hosts = [
+  { id: '172.20.10.10', ip: '172.20.10.10', zone: 'INTERNAL', role: 'compromised' },
+  { id: '172.20.10.11', ip: '172.20.10.11', zone: 'INTERNAL', role: 'compromised' },
+  { id: '203.0.113.88', ip: '203.0.113.88', zone: 'EXTERNAL', role: 'attacker infrastructure' },
+  { id: '198.51.100.25', ip: '198.51.100.25', zone: 'EXTERNAL', role: 'attacker infrastructure' },
+  { id: '172.20.10.14', ip: '172.20.10.14', zone: 'INTERNAL', role: 'target host' },
+  { id: '172.20.10.17', ip: '172.20.10.17', zone: 'INTERNAL', role: 'target host' },
+  { id: '172.20.10.29', ip: '172.20.10.29', zone: 'INTERNAL', role: 'target host' },
+  { id: '172.20.10.36', ip: '172.20.10.36', zone: 'INTERNAL', role: 'target host' },
+  { id: '172.20.10.15', ip: '172.20.10.15', zone: 'INTERNAL', role: 'target host' },
+];
+const inc0009Stages = [
+  { stage_id: 'INC-0009-stage-1', order: 1, tactic: 'Lateral Movement', tactic_id: 'TA0008', src: '172.20.10.10', dst: '172.20.10.14', port: '445', start: '2026-11-02T15:04:49.778564Z', end: '2026-11-02T15:14:53.921692Z', confidence: 0.85, observed: true, behavior: 'Lateral-SMB-Relay', summary: 'Lateral SMB relay attack on port 445', evidence: [{ flow_id: 'flw_apt_smb_05474', ts: '2026-11-02T15:04:49.778564Z', pcap_sha256: hash('flw_apt_smb_05474') }], explanation: [{ feature: 'SMB relay activity', weight: 0.88 }] },
+  { stage_id: 'INC-0009-stage-2', order: 2, tactic: 'Command and Control', tactic_id: 'TA0011', src: '172.20.10.10', dst: '203.0.113.88', port: '443', start: '2026-11-02T15:35:15.526534Z', end: '2026-11-02T15:56:39.972266Z', confidence: 0.92, observed: true, behavior: 'C2-Heartbeat', summary: 'Periodic C2 beaconing to external server', evidence: [{ flow_id: 'flw_apt_c2_08753', ts: '2026-11-02T15:35:15.526534Z', pcap_sha256: hash('flw_apt_c2_08753') }], explanation: [{ feature: 'C2 beacon regularity', weight: 0.94 }] },
+  { stage_id: 'INC-0009-stage-3', order: 3, tactic: 'Exfiltration', tactic_id: 'TA0010', src: '172.20.10.11', dst: '198.51.100.25', port: '443', start: '2026-11-02T15:43:52.019064Z', end: '2026-11-02T15:53:19.829900Z', confidence: 0.89, observed: true, behavior: 'HTTPS-Exfiltration', summary: 'HTTPS exfiltration to remote destination', evidence: [{ flow_id: 'flw_apt_exfil_06163', ts: '2026-11-02T15:43:52.019064Z', pcap_sha256: hash('flw_apt_exfil_06163') }], explanation: [{ feature: 'Outbound exfiltration volume', weight: 0.91 }] },
+];
+const inc0009 = {
+  incident_id: 'INC-0009', score: 0.92, status: 'Open',
+  start: '2026-11-02T15:04:49.778564Z', end: '2026-11-02T15:56:39.972266Z',
+  hosts: inc0009Hosts, stages: inc0009Stages, background: [],
+};
+
+export const mockList = () => [
+  { incident_id: inc0009.incident_id, score: inc0009.score, start: inc0009.start, end: inc0009.end, status: inc0009.status },
+  { incident_id: 'INC-0001', score: 0.8994, start: '2026-11-02T09:05:04.094161Z', end: '2026-11-02T10:23:38.562901Z', status: 'candidate' },
+  { incident_id: 'INC-0002', score: 0.7726, start: '2026-10-15T09:11:04Z', end: '2026-10-15T09:21:38Z', status: 'candidate' },
+  { incident_id: incident.incident_id, score: incident.score, start: incident.start, end: incident.end, status: incident.status },
+];
+
+export const mockIncident = (id) => {
+  if (id === 'INC-0009') return structuredClone(inc0009);
+  const base = structuredClone(incident);
+  base.incident_id = id || incident.incident_id;
+  return base;
+};
+
+export const mockReport = (id) => {
+  if (id === 'INC-0009') {
+    return {
+      report_id: 'RPT-INC-0009',
+      incident_id: 'INC-0009',
+      summary: 'On 2026-11-02, a network security incident occurred, involving 4100 alerts across 9 hosts in 3 stages: Lateral-SMB-Relay (15:04:49 to 15:14:53), C2-Heartbeat (15:35:15 to 15:56:39), and HTTPS-Exfiltration (15:43:52 to 15:53:19). Internal hosts that sent attack traffic (possibly compromised): 172.20.10.10, 172.20.10.11. External servers that received traffic from internal hosts (possible attacker infrastructure): 203.0.113.88, 198.51.100.25. Internal hosts that received attack traffic (targets): 172.20.10.14, 172.20.10.17, 172.20.10.29, 172.20.10.36, 172.20.10.15.',
+      factual_summary: 'On 2026-11-02, 4100 alerts in 3 stages, in time order: Lateral-SMB-Relay (15:04:49 to 15:14:53, 100 alerts); C2-Heartbeat (15:35:15 to 15:56:39, 2000 alerts); HTTPS-Exfiltration (15:43:52 to 15:53:19, 2000 alerts).',
+      findings: [{ claim: 'The attackers used a lateral SMB relay attack, possibly using SMB/Windows Admin Shares and Forced Authentication to gain access to the network.', flow_ids: ['flw_apt_smb_05474', 'flw_apt_c2_08753'], technique_id: 'T1021.002' }],
+      rejected_findings: [],
+      sentences: inc0009Stages.map(s => ({ text: `${s.summary}.`, stage_id: s.stage_id, evidence_ids: s.evidence.map(e => e.flow_id) })),
+      validation: { valid: 1, total: 1 },
+      footer: { input_sha256: hash('inc0009'), manifest_id: 'run_inc0009', attack_version: 'v15' },
+    };
+  }
+  if (id === 'INC-0001') {
+    return {
+      report_id: 'RPT-INC-0001',
+      incident_id: 'INC-0001',
+      summary: 'On 2026-11-02, 2200 alerts in 2 stages occurred: Reconnaissance (09:05:04 to 09:11:39) and Backdoor (10:10:22 to 10:23:38), involving internal hosts 10.0.1.12 and 10.0.1.28, and external hosts 198.51.100.3, 198.51.100.2, 198.51.100.4, and 198.51.100.12, with severity 0.8994 (HIGH).',
+      factual_summary: 'On 2026-11-02, 2200 alerts in 2 stages: Reconnaissance (2100 alerts) and Backdoor (100 alerts).',
+      findings: [{ claim: 'The incident started with reconnaissance, possibly involving network service discovery and active scanning.', flow_ids: ['flw_unsw_recon_04225', 'flw_unsw_recon_09901'], technique_id: 'T1595' }],
+      rejected_findings: [],
+      sentences: [
+        { text: 'Reconnaissance port scan detected from 198.51.100.3 to 10.0.1.28.', stage_id: 'INC-0001-stage-1', evidence_ids: ['flw_unsw_recon_04225', 'flw_unsw_recon_09901'] },
+        { text: 'Backdoor communication detected from 10.0.1.12 to 198.51.100.12.', stage_id: 'INC-0001-stage-2', evidence_ids: ['flw_unsw_back_02540', 'flw_unsw_back_08884'] }
+      ],
+      validation: { valid: 2, total: 2 },
+      footer: { input_sha256: hash('inc0001'), manifest_id: 'run_inc0001', attack_version: 'v15' },
+    };
+  }
+  if (id === 'INC-0002') {
+    return {
+      report_id: 'RPT-INC-0002',
+      incident_id: 'INC-0002',
+      summary: 'On 2026-10-15, a denial-of-service attack occurred, involving 10 alerts in 2 stages: PortScan reconnaissance on port 80 followed by DoS-Slowloris traffic exhausting the web server.',
+      factual_summary: 'On 2026-10-15, 10 alerts in 2 stages: PortScan (port 80) and DoS-Slowloris (port 80).',
+      findings: [{ claim: 'Denial-of-service slowloris flood targeting port 80.', flow_ids: ['flw_dos_0048', 'flw_dos_0049'], technique_id: 'T1499' }],
+      rejected_findings: [],
+      sentences: [
+        { text: 'PortScan detected on port 80 from 172.16.0.105 to 192.168.10.50.', stage_id: 'INC-0002-stage-1', evidence_ids: ['flw_scan_0080', 'flw_scan_0081'] },
+        { text: 'DoS-Slowloris activity on port 80 from 172.16.0.120 to 192.168.10.80.', stage_id: 'INC-0002-stage-2', evidence_ids: ['flw_dos_0048', 'flw_dos_0049'] }
+      ],
+      validation: { valid: 2, total: 2 },
+      footer: { input_sha256: hash('inc0002'), manifest_id: 'run_inc0002', attack_version: 'v15' },
+    };
+  }
+  const targetId = id || incident.incident_id;
+  return {
+    report_id: 'RPT-' + targetId,
+    incident_id: targetId,
+    sentences: stages.map(s => ({ text: `${s.summary}.${s.observed ? '' : ' (inferred)'}`, stage_id: s.stage_id, evidence_ids: s.evidence.map(e => e.flow_id) })),
+    validation: { valid: stages.length, total: stages.length },
+    footer: { input_sha256: hash('cicids-lab.pcap'), manifest_id: 'run_' + hash('m1').slice(0, 8), attack_version: 'v15' },
+  };
+};

@@ -1,7 +1,6 @@
 """Run the agent on the stand-in incidents over Member 2's real TEST flows."""
 import argparse
 import json
-from pathlib import Path
 
 from src.agent.agent import ForensicAgent
 from src.agent.attack_rag import AttackKnowledge
@@ -21,19 +20,9 @@ def main():
     ap.add_argument("--llm", action="store_true")
     args = ap.parse_args()
 
-    flows_path = (
-        Path("data/processed/benchmark_test_flows.parquet")
-        if Path("data/processed/benchmark_test_flows.parquet").exists()
-        else Path("data/raw/processed/benchmark_test_flows.parquet")
-    )
-    incidents_path = (
-        Path("outputs/member3_benchmark_test_incidents.json")
-        if Path("outputs/member3_benchmark_test_incidents.json").exists()
-        else Path("data/standin/incident_cases.json")
-    )
     tools = ForensicTools(
-        FlowStore(flows_path),
-        load_incidents(incidents_path),
+        FlowStore("data/raw/processed/benchmark_test_flows.parquet"),
+        load_incidents("data/standin/incident_cases.json"),
         AttackKnowledge(),
     )
     agent = ForensicAgent(tools)

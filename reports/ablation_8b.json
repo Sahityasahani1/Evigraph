@@ -1,0 +1,46 @@
+{
+  "rows": [
+    {
+      "incident_id": "INC-0009",
+      "proposed": 5,
+      "accepted": 5,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 397
+    },
+    {
+      "incident_id": "INC-0008",
+      "proposed": 6,
+      "accepted": 6,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 297
+    },
+    {
+      "incident_id": "INC-0001",
+      "proposed": 4,
+      "accepted": 4,
+      "rejected": 0,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {},
+      "seconds": 292
+    }
+  ],
+  "summary": {
+    "incidents": 3,
+    "proposed": 15,
+    "accepted": 15,
+    "rejected": 0,
+    "faithfulness_without_validator": 1.0,
+    "summaries_withheld": 0,
+    "problems": {}
+  }
+}

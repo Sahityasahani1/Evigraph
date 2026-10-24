@@ -37,6 +37,8 @@ def investigate(agent, incident_id: str) -> dict:
         "report_markdown": result["report"],
         "summary": result["summary"],
         "summary_withheld_reason": result["summary_note"],
+        "factual_summary": result["factual_summary"],
+        "host_roles": result["host_roles"],
         "timeline": inc["stages_in_time_order"],
         "cross_stage_hosts": inc.get("cross_stage_hosts", []),
         "attack_matches": {c: r["matches"] for c, r in briefing["attack_matches"].items()},
@@ -52,19 +54,9 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description="Investigate one incident and save JSON + Markdown.")
-    default_flows = (
-        "data/processed/benchmark_test_flows.parquet"
-        if Path("data/processed/benchmark_test_flows.parquet").exists()
-        else "data/raw/processed/benchmark_test_flows.parquet"
-    )
-    default_incidents = (
-        "outputs/member3_benchmark_test_incidents.json"
-        if Path("outputs/member3_benchmark_test_incidents.json").exists()
-        else "data/standin/incident_cases.json"
-    )
-    ap.add_argument("incident_id", help="Incident ID to investigate")
-    ap.add_argument("--flows", default=default_flows)
-    ap.add_argument("--incidents", default=default_incidents)
+    ap.add_argument("incident_id")
+    ap.add_argument("--flows", default="data/raw/processed/benchmark_test_flows.parquet")
+    ap.add_argument("--incidents", default="data/standin/incident_cases.json")
     ap.add_argument("--out", default="reports")
     ap.add_argument("--model", default="llama3.2:3b")
     args = ap.parse_args()

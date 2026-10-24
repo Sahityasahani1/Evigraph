@@ -1,0 +1,28 @@
+{
+  "rows": [
+    {
+      "incident_id": "INC-0009",
+      "proposed": 5,
+      "accepted": 3,
+      "rejected": 2,
+      "parse_error": false,
+      "summary_withheld": false,
+      "summary_note": null,
+      "problems": {
+        "attacker called a victim": 2
+      },
+      "seconds": 358
+    }
+  ],
+  "summary": {
+    "incidents": 1,
+    "proposed": 5,
+    "accepted": 3,
+    "rejected": 2,
+    "faithfulness_without_validator": 0.6,
+    "summaries_withheld": 0,
+    "problems": {
+      "attacker called a victim": 2
+    }
+  }
+}
