@@ -320,7 +320,14 @@ def parse_zeek_conn(
     df["tot_bwd_pkts"] = df["bwd_pkts"].astype("float32")
 
     # Connection state & labels
-    df["conn_state"] = raw_df["conn_state"].where(raw_df["conn_state"].notna(), None) if "conn_state" in raw_df.columns else None
+    df["conn_state"] = pd.Series(
+        [
+            None if pd.isna(value) else value
+            for value in raw_df["conn_state"].tolist()
+        ] if "conn_state" in raw_df.columns else [None] * len(raw_df),
+        index=df.index,
+        dtype=object,
+    )
     df["label_raw"] = "BENIGN"
     df["label_family"] = "BENIGN"
     df["label"] = "BENIGN"

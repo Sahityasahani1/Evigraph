@@ -40,9 +40,36 @@ def one(claim, flow_ids=None, technique_id=None):
     }]}
 
 
-def test_grounded_finding_is_accepted():
-    r = generate_report(make_agent(one("203.0.113.50 repeatedly targeted 10.0.0.5.", None, "T1110")), "INC-001")
-    assert len(r["accepted"]) == 1 and not r["rejected"]
+def test_retrieved_technique_without_candidate_specific_evidence_is_rejected():
+    r = generate_report(make_agent(one("203.0.113.50 may have repeatedly targeted 10.0.0.5; T1110 is an inferred candidate.", None, "T1110")), "INC-001")
+    assert not r["accepted"]
+    assert any("not grounded by the cited flow evidence" in problem for problem in r["rejected"][0]["problems"])
+
+
+def test_finding_cannot_present_retrieved_technique_as_confirmed():
+    r = generate_report(
+        make_agent(one("T1110 was confirmed in this traffic.", None, "T1110")),
+        "INC-001",
+    )
+    assert not r["accepted"]
+    assert any("qualified as inferred candidates" in p for p in r["rejected"][0]["problems"])
+
+
+def test_finding_stage_and_host_must_match_cited_flow():
+    agent = make_agent(lambda _content: {"findings": []})
+    incident = agent.tools.incidents["INC-001"]
+    scan = next(alert for alert in incident.alerts if alert.predicted_class == "PortScan")
+    ssh = next(alert for alert in incident.alerts if alert.predicted_class == "SSH-Patator")
+    agent = make_agent(one(
+        f"PortScan activity to {scan.dst_ip} was observed.", [ssh.flow_id]
+    ))
+
+    r = generate_report(agent, "INC-001")
+
+    assert not r["accepted"]
+    problems = " ".join(r["rejected"][0]["problems"])
+    assert "absent from the cited flows" in problems
+    assert "not represented by the cited flows" in problems
 
 
 def test_invented_flow_id_is_rejected():
@@ -129,8 +156,6 @@ def test_report_lists_role_changes_from_the_alerts():
     r = generate_report(make_agent(NO_FINDINGS), "INC-001")
     assert "10.0.0.5: target in" in r["report"] and "then source in" in r["report"]
 
-
-
 def test_report_has_code_written_summary_and_roles():
     r = generate_report(make_agent(NO_FINDINGS), "INC-001")
     assert "## Summary of the alerts (computed by code)" in r["report"]
@@ -149,14 +174,11 @@ def test_finding_about_an_internal_sender_may_say_compromised():
 
 def test_finding_calling_the_attacker_server_a_target_is_rejected():
     r = generate_report(make_agent(one("The host 203.0.113.50 was targeted by the attackers.")), "INC-001")
-    assert not r["accepted"] and "attacker-side" in r["rejected"][0]["problems"][0]
-
-
-def test_finding_about_an_internal_host_may_use_the_word_targets():
-    r = generate_report(make_agent(one("The host 10.0.0.5 sent traffic to several targets.")), "INC-001")
-    assert r["accepted"]
+    assert not r["accepted"]
+    assert any("attacker-side" in p for p in r["rejected"][0]["problems"])
 
 
 def test_finding_saying_the_attacker_was_targeted_is_rejected_in_either_wording():
     r = generate_report(make_agent(one("The attackers targeted 203.0.113.50.")), "INC-001")
-    assert not r["accepted"] and "attacker-side" in r["rejected"][0]["problems"][0]
+    assert not r["accepted"]
+    assert any("attacker-side" in p for p in r["rejected"][0]["problems"])

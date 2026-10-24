@@ -35,6 +35,8 @@ class HostGraphEngine:
         risk_scores = flows_df["risk_score"].fillna(0.0).astype(float).values if "risk_score" in flows_df.columns else np.zeros(len(flows_df), dtype=float)
         pred_classes = flows_df["predicted_class"].astype(str).values if "predicted_class" in flows_df.columns else np.full(len(flows_df), "BENIGN")
         is_alerts = flows_df["is_alert"].astype(bool).values if "is_alert" in flows_df.columns else np.zeros(len(flows_df), dtype=bool)
+        evidence_ids = flows_df["evidence_id"].astype(str).values if "evidence_id" in flows_df.columns else np.full(len(flows_df), "")
+        source_hashes = flows_df["source_sha256"].astype(str).values if "source_sha256" in flows_df.columns else np.full(len(flows_df), "")
         fwd_col = "tot_len_fwd_pkts" if "tot_len_fwd_pkts" in flows_df.columns else ("totlen_fwd_pkts" if "totlen_fwd_pkts" in flows_df.columns else None)
         bwd_col = "tot_len_bwd_pkts" if "tot_len_bwd_pkts" in flows_df.columns else ("totlen_bwd_pkts" if "totlen_bwd_pkts" in flows_df.columns else None)
         fwd_bytes = flows_df[fwd_col].fillna(0.0).astype(float).values if fwd_col else np.zeros(len(flows_df), dtype=float)
@@ -47,6 +49,8 @@ class HostGraphEngine:
                 {
                     "flow_id": fid,
                     "timestamp": ts,
+                    "evidence_id": evidence_id,
+                    "source_sha256": source_hash,
                     "src_port": sp,
                     "dst_port": dp,
                     "protocol": proto,
@@ -58,8 +62,8 @@ class HostGraphEngine:
                     "shap_explanation": se
                 }
             )
-            for s, d, fid, ts, sp, dp, proto, r, pc, al, fb, bb, se in zip(
-                src_ips, dst_ips, flow_ids, timestamps, src_ports, dst_ports,
+            for s, d, fid, ts, evidence_id, source_hash, sp, dp, proto, r, pc, al, fb, bb, se in zip(
+                src_ips, dst_ips, flow_ids, timestamps, evidence_ids, source_hashes, src_ports, dst_ports,
                 protocols, risk_scores, pred_classes, is_alerts, fwd_bytes, bwd_bytes, shap_exps
             )
         ]
@@ -165,6 +169,8 @@ class HostGraphEngine:
                 "source": str(u),
                 "target": str(v),
                 "timestamp": str(d.get("timestamp", "")),
+                "evidence_id": str(d.get("evidence_id", "")),
+                "source_sha256": str(d.get("source_sha256", "")),
                 "dst_port": int(d.get("dst_port", 0)),
                 "protocol": int(d.get("protocol", 6)),
                 "risk_score": float(d.get("risk_score", 0.0)),

@@ -128,17 +128,40 @@ class IncidentClusterEngine:
             incident = {
                 "incident_id": f"INC-{inc_idx+1:04d}",
                 "incident_score": incident_score,
+                "severity_score": incident_score,
                 "status": "candidate",
+                "inference_source": "fresh",
                 "suspected_entry_point": suspected_entry_point,
                 "start_time": t_start.isoformat(),
                 "end_time": t_end.isoformat(),
                 "duration_seconds": duration_secs,
                 "total_alerts": len(flow_ids),
                 "affected_hosts": all_hosts,
+                "hosts": all_hosts,
                 "attack_classes": attack_classes,
                 "evidence_flow_ids": flow_ids,
                 "evidence_files": list(sub_alerts["evidence_id"].unique())
             }
+            if "source_sha256" in sub_alerts.columns:
+                incident["source_sha256"] = sorted(
+                    set(sub_alerts["source_sha256"].dropna().astype(str))
+                )
+            incident["alerts"] = [
+                {
+                    "alert_id": f"alt_{row['flow_id']}",
+                    "flow_id": str(row["flow_id"]),
+                    "timestamp": row["timestamp"].isoformat(),
+                    "src_ip": str(row["src_ip"]),
+                    "dst_ip": str(row["dst_ip"]),
+                    "src_port": int(row.get("src_port", 0) or 0),
+                    "dst_port": int(row.get("dst_port", 0) or 0),
+                    "protocol": int(row.get("protocol", 6) or 6),
+                    "predicted_class": str(row["predicted_class"]),
+                    "risk_score": float(row["risk_score"]),
+                    "evidence_id": str(row["evidence_id"]),
+                }
+                for _, row in sub_alerts.iterrows()
+            ]
             incidents.append(incident)
 
         # Sort incidents by severity score descending

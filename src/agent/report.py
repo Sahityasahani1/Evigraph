@@ -4,9 +4,11 @@ import json
 import re
 from ipaddress import ip_address, ip_network
 
+import ollama
 from pydantic import BaseModel, Field, ValidationError
 
 from src.agent.audit import NUM_CTX, SEED, audit_target, log_run, run_info
+from src.agent.victim_rule import attacker_side_problem
 
 IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 FLOW_RE = re.compile(r"\bflw_[A-Za-z0-9_]+\b")
@@ -49,7 +51,9 @@ Return JSON only: {"findings": [{"claim": str, "flow_ids": [str], "technique_id"
 Rules:
 - Each claim is ONE short factual sentence supported by the data. Use the word "possibly" for anything inferred.
 - flow_ids: one or more flow IDs copied exactly from the data (first_flow_id, last_flow_id, or top_alerts_by_risk). Never invent IDs.
-- technique_id: ONE ATT&CK ID copied from attack_matches for the stage the claim is about, or null.
+- technique_id: ONE ATT&CK ID copied from a retrieved candidate, or null. A retrieved candidate is not an observed event.
+- Stage query flow IDs are retrieval context, not technique-specific evidence. Cite a technique only if its result includes candidate-specific evidence links that overlap the finding's flow_ids; otherwise use null.
+- Retrieved ATT&CK techniques are unverified suggestions and require analyst review. Retrieval relevance is not confidence or confirmation.
 - Mention IP addresses only if they appear in the data.
 - host_roles lists hosts by role. Only call a host "possibly compromised" if it is listed under host_roles.compromised. Hosts under host_roles.infra are attacker servers, never victims or compromised hosts. Hosts under host_roles.victims were targeted.
 - cross_stage_hosts lists hosts that appear in several stages, with a pattern. If a host has pattern target_then_source, include a finding that it was possibly compromised.
@@ -98,6 +102,8 @@ def _top(counts: dict, n: int = 8) -> dict:
 
 
 def _hosts_text(hosts, distinct):
+    if not hosts:
+        return f"{distinct} hosts" if distinct > 0 else "none"
     text = ", ".join(hosts)
     extra = distinct - len(hosts)
     return f"{text} and {extra} more" if extra > 0 else text
@@ -138,6 +144,15 @@ def text_problems(text, tools, known_ips, source_text, flow_ids=(), technique_id
     bad_t = {t for t in techs if t not in tools.techniques_seen}
     if bad_t:
         problems.append(f"cites ATT&CK IDs not in the search results: {sorted(bad_t)}")
+    cited_flows = set(flow_ids) | set(FLOW_RE.findall(text))
+    ungrounded = {
+        technique for technique in set(techs)
+        if not tools.technique_evidence.get(technique, set()).intersection(cited_flows)
+    }
+    if ungrounded:
+        problems.append(
+            f"ATT&CK mappings lack matching cited flow evidence: {sorted(ungrounded)}"
+        )
     bad_ip = {ip for ip in IP_RE.findall(text) if ip not in known_ips}
     if bad_ip:
         problems.append(f"mentions IPs not in this incident: {sorted(bad_ip)}")
@@ -147,36 +162,82 @@ def text_problems(text, tools, known_ips, source_text, flow_ids=(), technique_id
     return problems
 
 
-_FILLER = r"(?:(?:a|an|the|also|possibly|likely|then|repeatedly|been|being)\s+)*"
-
-
-def _called_victim(claim: str, ip: str) -> bool:
-    """True if the claim says this host was the target or victim (not that it targeted someone)."""
-    p = re.escape(ip)
-    passive = rf"{p}\s+(?:was|were|is|are)\s+{_FILLER}(?:targeted|attacked|breached|victims?|targets?)\b"
-    obj = rf"\b(?:targeted|attacked|breached)\s+(?:the\s+)?(?:host\s+|server\s+)?{p}"
-    return bool(re.search(passive, claim, re.IGNORECASE) or re.search(obj, claim, re.IGNORECASE))
-
-
 def validate_findings(findings, tools, known_ips, source_text="", compromised=None, attacker_side=None):
     accepted, rejected = [], []
     for f in findings:
         problems = text_problems(
             f.claim, tools, known_ips, source_text, f.flow_ids, [f.technique_id]
         )
+        cited_alerts = [
+            alert
+            for incident in tools.incidents.values()
+            for alert in incident.alerts
+            if alert.flow_id in set(f.flow_ids)
+        ]
+        cited_ips = {ip for alert in cited_alerts for ip in (alert.src_ip, alert.dst_ip)}
+        unsupported_cited_ips = set(IP_RE.findall(f.claim)) & set(known_ips) - cited_ips
+        if unsupported_cited_ips:
+            problems.append(
+                "mentions incident hosts absent from the cited flows: "
+                f"{sorted(unsupported_cited_ips)}"
+            )
+
+        normalized_claim = re.sub(r"[^a-z0-9]+", "", f.claim.lower())
+        mentioned_classes = {
+            alert.predicted_class
+            for incident in tools.incidents.values()
+            for alert in incident.alerts
+            if len(re.sub(r"[^a-z0-9]+", "", alert.predicted_class.lower())) >= 4
+            and re.sub(r"[^a-z0-9]+", "", alert.predicted_class.lower()) in normalized_claim
+        }
+        cited_classes = {alert.predicted_class for alert in cited_alerts}
+        mismatched_classes = mentioned_classes - cited_classes
+        if mismatched_classes:
+            problems.append(
+                "names detector stages not represented by the cited flows: "
+                f"{sorted(mismatched_classes)}"
+            )
+
+        uncertainty = re.search(
+            r"\b(possibly|possible|likely|inferred|candidate|may|might|could|"
+            r"consistent with|not confirmed|not established)\b",
+            f.claim,
+            flags=re.IGNORECASE,
+        )
+        if f.technique_id and not uncertainty:
+            problems.append(
+                "ATT&CK technique claims must be qualified as inferred candidates, not confirmed."
+            )
+        confirmation = re.search(
+            r"\b(confirm(?:ed|s|ing)?|proven|definitively|certainly)\b",
+            f.claim,
+            flags=re.IGNORECASE,
+        )
+        explicitly_not_confirmed = re.search(
+            r"\b(?:not|never)\s+(?:been\s+)?confirmed\b",
+            f.claim,
+            flags=re.IGNORECASE,
+        )
+        if confirmation and not explicitly_not_confirmed and (f.technique_id or mentioned_classes):
+            problems.append(
+                "presents a detector or ATT&CK inference as confirmed activity."
+            )
         if not f.flow_ids:
             problems.insert(0, "cites no flow_id")
+        if f.technique_id:
+            grounded_flows = tools.technique_evidence.get(f.technique_id, set())
+            if not grounded_flows.intersection(f.flow_ids):
+                problems.append(
+                    f"ATT&CK technique {f.technique_id} is not grounded by the cited flow evidence"
+                )
         if compromised is not None and "compromis" in f.claim.lower():
             wrong = sorted({ip for ip in IP_RE.findall(f.claim) if ip not in compromised})
             if wrong:
                 problems.append("calls hosts compromised that never sent attack traffic "
                                 f"from inside the network: {wrong}")
-        if attacker_side:
-            wrong = sorted({ip for ip in IP_RE.findall(f.claim)
-                            if ip in attacker_side and _called_victim(f.claim, ip)})
-            if wrong:
-                problems.append("calls attacker-side hosts targets or victims "
-                                f"(they are attacker servers or attackers): {wrong}")
+        victim_problem = attacker_side_problem(f.claim, IP_RE.findall(f.claim), attacker_side)
+        if victim_problem:
+            problems.append(victim_problem)
         if problems:
             rejected.append({"finding": f, "problems": problems})
         else:
@@ -193,14 +254,16 @@ def build_report(briefing, accepted, rejected, summary=None, summary_note=None, 
     stages = inc["stages_in_time_order"]
     roles = briefing.get("host_roles")
     L = [f"# Incident report: {inc['incident_id']}"]
-    if roles:
-        L += ["", "## Summary of the alerts (computed by code)", factual_summary(briefing)]
     if summary:
         L += ["", "## Executive summary (model-written, verified)",
               "AI-written: every ID, IP and number is checked against the data, "
               "but roles and relationships can still be wrong.", summary]
     elif summary_note:
         L += ["", "## Executive summary (model-written)", f"- Withheld: {summary_note}"]
+        if roles:
+            L += ["", "## Summary of the alerts (computed by code)", factual_summary(briefing)]
+    elif roles:
+        L += ["", "## Summary of the alerts (computed by code)", factual_summary(briefing)]
 
     L += ["", "## Overview"]
     L.append(f"- Severity: {inc['severity_score']} ({_band(inc['severity_score'])}; "
@@ -252,20 +315,63 @@ def build_report(briefing, accepted, rejected, summary=None, summary_note=None, 
                  f"{s['unique_destination_ports']} ports) and received "
                  f"{s['flows_as_destination']} flows")
 
-    L += ["", "## ATT&CK mapping (best search match per stage)"]
+    L += ["", "## ATT&CK retrieval candidates (inferred, not confirmed)"]
     for cls, res in briefing["attack_matches"].items():
-        m = res["matches"]
-        if m:
-            others = ", ".join(x["id"] for x in m[1:])
-            L.append(f"- {cls}: {m[0]['id']} {m[0]['name']} "
-                     f"(tactic: {', '.join(m[0]['tactics'])}); other candidates: {others}")
+        matches = res.get("matches", [])
+        if res.get("status") == "unavailable":
+            L.append(f"- {cls}: retrieval unavailable: {res.get('error') or 'index or embedding service unavailable'}")
+            continue
+        if not matches:
+            L.append(f"- {cls}: no technique matches; mapping unsupported.")
+            continue
+        query_context = res.get("query_context_flow_ids", [])
+        if query_context:
+            L.append(
+                f"- {cls}: stage query context flows (not technique-specific evidence): "
+                f"{', '.join(query_context)}"
+            )
+        for match in matches:
+            candidate_evidence = match.get("candidate_evidence", {})
+            flow_ids = candidate_evidence.get("flow_ids", [])
+            event_ids = candidate_evidence.get("event_ids", [])
+            evidence = ", ".join(flow_ids + event_ids)
+            status = (
+                "evidence-linked candidate; analyst review not recorded"
+                if evidence else "retrieved candidate; analyst review not recorded"
+            )
+            similarity = match.get("retrieval_similarity")
+            similarity_text = (
+                f"retrieval similarity: {similarity}"
+                if similarity is not None and match.get("score_semantics") == "cosine_similarity"
+                else "retrieval similarity: not provided"
+            )
+            refs = f" · [ATT&CK source]({match['source_url']})" if match.get("source_url") else ""
+            evidence_refs = (
+                ", ".join([*(f"flow {flow_id}" for flow_id in flow_ids),
+                            *(f"event {event_id}" for event_id in event_ids)])
+                or "none"
+            )
+            L.append(
+                f"- {cls}: **{match['id']} {match['name']}** "
+                f"(tactics: {', '.join(match.get('tactics', []))}; "
+                f"{similarity_text}; status: {status}; "
+                f"candidate-specific evidence references: {evidence_refs}){refs}"
+            )
+            L.append(f"  - {match.get('retrieval_reason', 'Retrieved by semantic similarity to the stage query.')}")
+            if evidence:
+                if candidate_evidence.get("reason"):
+                    L.append(f"  - Candidate evidence basis: {candidate_evidence['reason']}")
+            else:
+                L.append("  - No technique-specific evidence available. This candidate requires analyst review.")
+    L.append("- Retrieval similarity measures embedding text similarity, not confidence or confirmed adversary behavior.")
 
     L += ["", "## Analyst findings (each verified against retrieved evidence)"]
     if not accepted:
         L.append("- No model finding passed verification.")
     for f in accepted:
         tech = f" ({f.technique_id})" if f.technique_id else ""
-        L.append(f"- {f.claim}{tech} [{', '.join(f.flow_ids)}]")
+        flow_text = f" [{', '.join(f.flow_ids)}]" if f.flow_ids else ""
+        L.append(f"- {f.claim}{tech}{flow_text}")
 
     L += ["", "## Verification summary",
           f"- Findings proposed: {len(accepted) + len(rejected)}, "
@@ -283,13 +389,16 @@ def build_report(briefing, accepted, rejected, summary=None, summary_note=None, 
 
 
 def _summarise(agent, base_report, known_ips):
-    resp = agent.chat(
-        model=agent.model,
-        messages=[{"role": "system", "content": SUMMARY_PROMPT},
-                  {"role": "user", "content": "Report:\n" + base_report}],
-        format=Summary.model_json_schema(),
-        options={"temperature": 0, "num_ctx": NUM_CTX, "seed": SEED},
-    )
+    try:
+        resp = agent.chat(
+            model=agent.model,
+            messages=[{"role": "system", "content": SUMMARY_PROMPT},
+                      {"role": "user", "content": "Report:\n" + base_report}],
+            format=Summary.model_json_schema(),
+            options={"temperature": 0, "num_ctx": NUM_CTX, "seed": SEED},
+        )
+    except (ConnectionError, TimeoutError, ollama.RequestError, ollama.ResponseError) as exc:
+        return None, f"local reasoning model unavailable: {exc}"
     try:
         text = Summary.model_validate_json(resp.message.content).summary.strip()
     except (ValidationError, ValueError):
@@ -306,6 +415,7 @@ def generate_report(agent, incident_id: str, audit_path=None) -> dict:
     tools = agent.tools
     tools.evidence.clear()  # evidence is tracked per incident
     tools.techniques_seen.clear()
+    tools.technique_evidence.clear()
     info = run_info(agent.model)
     target = audit_target(audit_path)
     calls: list[dict] = []
@@ -318,18 +428,23 @@ def generate_report(agent, incident_id: str, audit_path=None) -> dict:
     briefing["host_roles"] = {k: _top(v) for k, v in roles.items()}
 
     source = json.dumps(briefing, separators=(",", ":"), default=str)
-    resp = agent.chat(
-        model=agent.model,
-        messages=[{"role": "system", "content": FINDINGS_PROMPT},
-                  {"role": "user", "content": "Incident data:\n" + source}],
-        format=FindingList.model_json_schema(),
-        options={"temperature": 0, "num_ctx": NUM_CTX, "seed": SEED},
-    )
+    reasoning_error = None
     parse_error = False
     try:
-        findings = FindingList.model_validate_json(resp.message.content).findings
-    except (ValidationError, ValueError):
-        findings, parse_error = [], True
+        resp = agent.chat(
+            model=agent.model,
+            messages=[{"role": "system", "content": FINDINGS_PROMPT},
+                      {"role": "user", "content": "Incident data:\n" + source}],
+            format=FindingList.model_json_schema(),
+            options={"temperature": 0, "num_ctx": NUM_CTX, "seed": SEED},
+        )
+        try:
+            findings = FindingList.model_validate_json(resp.message.content).findings
+        except (ValidationError, ValueError):
+            findings, parse_error = [], True
+    except (ConnectionError, TimeoutError, ollama.RequestError, ollama.ResponseError) as exc:
+        findings = []
+        reasoning_error = f"local reasoning model unavailable: {exc}"
 
     known_ips = set(tools.incidents[incident_id].hosts)
     attacker_side = set(roles["infra"]) | set(roles["attackers"])
@@ -337,14 +452,31 @@ def generate_report(agent, incident_id: str, audit_path=None) -> dict:
                                            set(roles["compromised"]), attacker_side)
 
     base = build_report(briefing, accepted, rejected)
-    summary, summary_note = _summarise(agent, base, known_ips)
+    if reasoning_error:
+        summary, summary_note = None, reasoning_error
+    else:
+        summary, summary_note = _summarise(agent, base, known_ips)
     log_run(target, incident_id, info, calls, len(accepted), len(rejected))
+    report = build_report(briefing, accepted, rejected, summary, summary_note, info)
+    reasoning_status = "degraded" if reasoning_error or (
+        summary_note and summary_note.startswith("local reasoning model unavailable:")
+    ) else "available"
+    if reasoning_status == "degraded":
+        report += (
+            "\n\n## Reasoning status\n"
+            f"- Deterministic evidence report generated; {summary_note}. "
+            "No LLM-generated findings or executive summary are claimed."
+        )
     return {
-        "report": build_report(briefing, accepted, rejected, summary, summary_note, info),
+        "report": report,
         "error": None, "accepted": accepted, "rejected": rejected,
         "summary": summary, "summary_note": summary_note,
         "factual_summary": factual_summary(briefing), "host_roles": briefing["host_roles"],
         "run_info": info, "parse_error": parse_error, "tool_calls": calls,
+        "briefing": briefing, "reasoning_status": reasoning_status,
+        "reasoning_error": reasoning_error or (
+            summary_note if reasoning_status == "degraded" else None
+        ),
     }
 
 

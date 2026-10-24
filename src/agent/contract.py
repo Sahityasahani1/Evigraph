@@ -19,6 +19,7 @@ class Alert(BaseModel):
     protocol: int  # 6 = TCP, 17 = UDP
     predicted_class: str  # e.g. "C2-Heartbeat", "SYN-Flood"
     risk_score: float = Field(ge=0, le=1)
+    evidence_id: str | None = None
 
 
 class Incident(BaseModel):

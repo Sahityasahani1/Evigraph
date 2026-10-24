@@ -30,6 +30,12 @@ def test_investigate_returns_json_serialisable_result():
     r = investigate(make(), "INC-001")
     json.dumps(r)
     assert r["error"] is None and r["report_markdown"] and r["timeline"]
+    stage = r["attack_matches"]["SSH-Patator"]
+    assert stage["matches"][0]["id"] == "T1110"
+    assert stage["mapping_status"] == "retrieved_candidate"
+    assert stage["matches"][0]["candidate_status"] == "retrieved_candidate"
+    assert stage["matches"][0]["candidate_evidence"]["flow_ids"] == []
+    assert stage["matches"][0]["review_status"] == "not_reviewed"
 
 
 def test_unknown_incident_returns_error_not_crash():

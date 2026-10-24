@@ -72,7 +72,7 @@ class CausalProvenanceEngine:
     """
     def __init__(
         self,
-        max_scan_window_secs: float = 180.0,
+        max_scan_window_secs: float = 300.0,
         min_dwell_time_secs: float = 0.05,
         max_dwell_time_secs: float = 600.0,
         min_causal_confidence: float = 0.40
@@ -85,7 +85,7 @@ class CausalProvenanceEngine:
     @staticmethod
     def classify_stage(attack_class: str) -> str:
         """Maps an intrusion class name to its canonical MITRE tactical stage."""
-        return ATTACK_CLASS_TO_STAGE.get(attack_class, "Reconnaissance")
+        return ATTACK_CLASS_TO_STAGE.get(attack_class, "Unknown")
 
     def compute_fsm_score(self, stage_from: str, stage_to: str) -> float:
         """
@@ -140,6 +140,8 @@ class CausalProvenanceEngine:
                 target=str(alert.get("target")),
                 timestamp=str(alert.get("timestamp")),
                 ts_epoch=parse_ts(alert.get("timestamp", 0)),
+                evidence_id=str(alert.get("evidence_id", "")),
+                source_sha256=str(alert.get("source_sha256", "")),
                 dst_port=int(alert.get("dst_port", 0)),
                 protocol=int(alert.get("protocol", 6)),
                 risk_score=float(alert.get("risk_score", 0.5)),
@@ -257,10 +259,14 @@ class CausalProvenanceEngine:
                 "source": nd.get("source"),
                 "target": nd.get("target"),
                 "timestamp": nd.get("timestamp"),
+                "evidence_id": nd.get("evidence_id"),
+                "source_sha256": nd.get("source_sha256"),
                 "dst_port": nd.get("dst_port"),
                 "predicted_class": nd.get("predicted_class"),
                 "attack_stage": nd.get("attack_stage"),
-                "risk_score": nd.get("risk_score")
+                "risk_score": nd.get("risk_score"),
+                "observed": True,
+                "interpretation_status": "inferred"
             }
             if step_idx > 1:
                 prev_id = path[step_idx - 2]

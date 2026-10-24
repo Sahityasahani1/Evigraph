@@ -2,7 +2,7 @@
 EviGraph Member 2 Pipeline Runner: Detection & Graph Engine
 Executes End-to-End:
 1. Data Loading & Leak-free Temporal Split
-2. XGBoost Baseline Training OR PyG Edge-GraphSAGE (CUDA-Accelerated)
+2. XGBoost Baseline Training OR PyG Edge-GraphSAGE (CUDA-Accelerated / CPU)
 3. Platt Risk Probability Calibration
 4. Host-Communication Graph Construction
 5. Inverted Host Index Alert Correlation & Incident Clustering
@@ -17,13 +17,24 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score, average_precision_score
 
-from src.config import SAMPLES_DATA_DIR, OUTPUTS_DIR
+from src.config import SAMPLES_DATA_DIR, OUTPUTS_DIR, MODELS_DIR
 from src.data_loader import FlowDataLoader
 from src.baseline_detector import BaselineDetector
-from src.gnn_detector import GNNDetector
-from src.detectors.autoencoder_detector import AutoencoderDetector
+try:
+    from src.gnn_detector import GNNDetector
+    _gnn_import_error = None
+except ImportError as e:  # torch / torch_geometric are optional
+    GNNDetector = None
+    _gnn_import_error = str(e)
+try:
+    from src.detectors.autoencoder_detector import AutoencoderDetector
+except ImportError:
+    AutoencoderDetector = None
 from src.detectors.hist_gb_detector import HistGBDetector
-from src.detectors.ensemble_fuser import EnsembleFuser
+try:
+    from src.detectors.ensemble_fuser import EnsembleFuser
+except ImportError:
+    EnsembleFuser = None
 from src.graph_engine import HostGraphEngine
 from src.incident_cluster import IncidentClusterEngine
 
@@ -32,7 +43,8 @@ def run_pipeline(
     max_rows: Optional[int] = None, 
     raw_df: Optional[pd.DataFrame] = None,
     model_type: str = "xgb",
-    run_agent: bool = False
+    run_agent: bool = False,
+    load_checkpoint: bool = False
 ):
     print("=" * 60)
     print("   EVIGRAPH: MEMBER 2 (DETECTION & GRAPH ENGINE)")
@@ -45,39 +57,70 @@ def run_pipeline(
         raw_df = loader.load_dataset(data_path, max_rows=max_rows)
         
     X_train, y_train, meta_train, X_val, y_val, meta_val, X_test, y_test, meta_test = loader.prepare_temporal_split(
-        raw_df, train_ratio=0.60, val_ratio=0.20
+        raw_df, train_ratio=0.60, val_ratio=0.20, per_class=False
     )
     
-    # 2. Train Detector (Ensemble, XGBoost, Autoencoder, HistGB, or GNN)
+    # 2. Train or Load Detector (Ensemble, XGBoost, Autoencoder, HistGB, or GNN)
     if model_type == "ensemble":
-        print("\n--- Training Tri-Pillar Multi-Model Defense-in-Depth Ensemble ---")
+        if EnsembleFuser is None:
+            raise ImportError("Ensemble detector could not be imported.")
         detector = EnsembleFuser(model_name="ensemble_fuser")
-        detector.train(X_train, y_train, X_val, y_val)
-        detector.save()
+        if load_checkpoint:
+            detector.load()
+        else:
+            print("\n--- Training Tri-Pillar Multi-Model Defense-in-Depth Ensemble ---")
+            detector.train(X_train, y_train, X_val, y_val)
+            detector.save()
         scored_test_df = detector.score_flows(X_test, meta_test)
     elif model_type == "autoencoder":
-        print("\n--- Training Unsupervised PyTorch Autoencoder Zero-Day Detector ---")
+        if AutoencoderDetector is None:
+            raise ImportError("Autoencoder detector could not be imported.")
         detector = AutoencoderDetector(model_name="autoencoder_detector")
-        detector.train(X_train, y_train, X_val, y_val, epochs=15)
-        detector.save()
+        if load_checkpoint:
+            detector.load()
+        else:
+            print("\n--- Training Unsupervised PyTorch Autoencoder Zero-Day Detector ---")
+            detector.train(X_train, y_train, X_val, y_val, epochs=15)
+            detector.save()
         scored_test_df = detector.score_flows(X_test, meta_test)
     elif model_type == "histgb":
-        print("\n--- Training Scikit-Learn Native HistGradientBoosting Detector ---")
         detector = HistGBDetector(model_name="hist_gb_detector")
-        detector.train(X_train, y_train, X_val, y_val)
-        detector.save()
+        if load_checkpoint:
+            detector.load()
+        else:
+            print("\n--- Training Scikit-Learn Native HistGradientBoosting Detector ---")
+            detector.train(X_train, y_train, X_val, y_val)
+            detector.save()
         scored_test_df = detector.score_flows(X_test, meta_test)
     elif model_type == "gnn":
-        print("\n--- Training PyTorch Geometric Edge-GraphSAGE Detector ---")
+        if GNNDetector is None:
+            raise ImportError(
+                f"Cannot run GNN detector because required dependencies could not be imported: {_gnn_import_error}. "
+                f"Please ensure 'torch' and 'torch_geometric' are installed."
+            )
         detector = GNNDetector(model_name="gnn_edge_sage")
-        detector.train(X_train, y_train, meta_train, X_val, y_val, meta_val, epochs=25)
-        detector.save()
+        checkpoint_path = MODELS_DIR / "gnn_edge_sage.pt"
+        if load_checkpoint:
+            if not checkpoint_path.exists():
+                raise FileNotFoundError(
+                    f"GNN checkpoint not found at {checkpoint_path}. Train the model first by running without --load-checkpoint."
+                )
+            print(f"\n--- Loading PyTorch Geometric Edge-GraphSAGE Detector Checkpoint ---")
+            detector.load(checkpoint_path)
+        else:
+            print("\n--- Training PyTorch Geometric Edge-GraphSAGE Detector ---")
+            detector.train(X_train, y_train, meta_train, X_val, y_val, meta_val, epochs=25)
+            detector.save(checkpoint_path)
+        detector.validate_inference_split(meta_test)
         scored_test_df = detector.score_flows(X_test, meta_test)
     else:
-        print("\n--- Training Multi-Class XGBoost Baseline Detector ---")
         detector = BaselineDetector(model_name="xgboost_baseline")
-        detector.train(X_train, y_train, X_val, y_val)
-        detector.save()
+        if load_checkpoint:
+            detector.load()
+        else:
+            print("\n--- Training Multi-Class XGBoost Baseline Detector ---")
+            detector.train(X_train, y_train, X_val, y_val)
+            detector.save()
         scored_test_df = detector.score_flows(X_test, meta_test)
     
     # 3. Score Test Flows & Flag Alerts
@@ -182,6 +225,7 @@ if __name__ == "__main__":
     parser.add_argument("--data", type=str, default=None, help="Path to CSV or Parquet flow dataset, or 'all'")
     parser.add_argument("--model", type=str, default="ensemble", choices=["ensemble", "xgb", "autoencoder", "histgb", "gnn"], help="Detector model architecture: 'ensemble', 'xgb', 'autoencoder', 'histgb', or 'gnn'")
     parser.add_argument("--max-rows", type=int, default=None, help="Max rows to process (useful for rapid testing)")
+    parser.add_argument("--load-checkpoint", action="store_true", help="Load existing model checkpoint from models/ instead of retraining")
     parser.add_argument("--agent", action="store_true", help="Automatically trigger Member 3 Forensic Agent, Courtroom Auditor, Containment, Privacy, and Simulator after detection")
     args = parser.parse_args()
 
@@ -189,7 +233,7 @@ if __name__ == "__main__":
         loader = FlowDataLoader()
         sample_size = args.max_rows  # None loads the complete 2.64M enterprise dataset
         raw_df = loader.load_combined_dataset(max_per_attack=sample_size, benign_per_file=sample_size)
-        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent)
+        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent, load_checkpoint=args.load_checkpoint)
     elif args.data in ["processed", "preprocessed"]:
         from src.config import PROCESSED_DATA_DIR
         full_proc_path = PROCESSED_DATA_DIR / "benchmark_full_340k.parquet"
@@ -201,7 +245,7 @@ if __name__ == "__main__":
                 n_take = max(20, int(args.max_rows * len(grp) / len(raw_df)))
                 sampled_slices.append(grp.head(n_take))
             raw_df = pd.concat(sampled_slices, ignore_index=True)
-        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent)
+        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent, load_checkpoint=args.load_checkpoint)
     elif args.data in ["new_benchmark", "new", "new_benchmarks"] or (args.data and Path(args.data).is_dir()):
         from src.config import BASE_DIR
         target_dir = Path(args.data) if (args.data and Path(args.data).is_dir()) else (BASE_DIR / "data" / "new_benchmark")
@@ -211,10 +255,10 @@ if __name__ == "__main__":
             print(f"   -> {bf.name}")
         loader = FlowDataLoader()
         raw_df = loader.load_combined_dataset(file_paths=benchmark_files, max_per_attack=args.max_rows, benign_per_file=args.max_rows)
-        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent)
+        run_pipeline(raw_df=raw_df, model_type=args.model, run_agent=args.agent, load_checkpoint=args.load_checkpoint)
     elif args.data:
         target_file = Path(args.data)
-        run_pipeline(target_file, max_rows=args.max_rows, model_type=args.model, run_agent=args.agent)
+        run_pipeline(target_file, max_rows=args.max_rows, model_type=args.model, run_agent=args.agent, load_checkpoint=args.load_checkpoint)
     else:
         target_file = SAMPLES_DATA_DIR / "sample_cicids2017_flows.csv"
         if not target_file.exists():
@@ -223,4 +267,4 @@ if __name__ == "__main__":
             df = generate_flows()
             target_file.parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(target_file, index=False)
-        run_pipeline(target_file, max_rows=args.max_rows, model_type=args.model, run_agent=args.agent)
+        run_pipeline(target_file, max_rows=args.max_rows, model_type=args.model, run_agent=args.agent, load_checkpoint=args.load_checkpoint)

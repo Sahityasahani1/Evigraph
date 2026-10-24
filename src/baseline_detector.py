@@ -206,7 +206,9 @@ class BaselineDetector:
         if self.base_model is None:
             raise ValueError("Model has not been trained or loaded yet.")
             
-        th = threshold or self.optimal_threshold
+        th = self.optimal_threshold if threshold is None else threshold
+        if not np.isfinite(th) or not 0.0 <= th <= 1.0:
+            raise ValueError("Alert threshold must be a finite value in [0, 1].")
         X_clean = X[self.feature_columns].replace([np.inf, -np.inf], np.nan).fillna(0).astype(np.float32)
         
         probs = self.base_model.predict_proba(X_clean)

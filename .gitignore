@@ -55,4 +55,64 @@ data/knowledge/attack_techniques.json
 data/knowledge/attack_index.npz
 data/raw/
 data/standin/
+
+frontend/evigraph-backend/
+frontend/.env.local
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Data directories (raw datasets and artifacts are large)
+data/raw/*
+!data/raw/.gitkeep
+data/evidence/*
+!data/evidence/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+*.pcap
+*.pcapng
+*.parquet
+*.csv
+*.zip
+*.tar.gz
+
+# Exceptions: keep sample fixtures
+!data/samples/
+!data/samples/*.csv
+data/samples/Tuesday-WorkingHours.pcap_ISCX.csv
+
+# Model checkpoints and weights
+models/*.pt
+models/*.onnx
+models/*.bin
+models/*.joblib
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints
+
+# Logs and outputs
+*.log
+outputs/*.json
+outputs/*.md
+!outputs/.gitkeep
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+data/knowledge/enterprise-attack.json
+data/knowledge/attack_techniques.json
+data/knowledge/attack_index.npz
+data/raw/
+data/standin/
 reports/agent_audit.jsonl

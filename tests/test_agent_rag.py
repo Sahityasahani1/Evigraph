@@ -12,7 +12,7 @@ from pathlib import Path
 import json
 
 from src.agent.citation_validator import CitationValidator
-from src.agent.forensic_agent import ForensicAgent, MITRE_ATTACK_MAPPING
+from src.agent.forensic_agent import ForensicAgent
 from src.config import OUTPUTS_DIR
 
 class TestForensicAgentAndRAG(unittest.TestCase):
@@ -82,11 +82,9 @@ class TestForensicAgentAndRAG(unittest.TestCase):
         agent = ForensicAgent(self.cases_file)
         mapping = agent.map_to_mitre_attack("PortScan")
         self.assertEqual(mapping["tactic_id"], "TA0007")
-        self.assertEqual(mapping["technique_id"], "T1046")
-
-        mapping_ssh = agent.map_to_mitre_attack("SSH-Patator")
-        self.assertEqual(mapping_ssh["tactic_id"], "TA0006")
-        self.assertEqual(mapping_ssh["technique_id"], "T1110.001")
+        self.assertIn(mapping["mapping_status"], {"inferred", "unsupported"})
+        self.assertIsInstance(mapping["matches"], list)
+        self.assertNotIn("technique_id", mapping)
 
     def test_end_to_end_agent_report_generation(self):
         agent = ForensicAgent(self.cases_file)

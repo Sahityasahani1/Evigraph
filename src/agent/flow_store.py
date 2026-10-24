@@ -32,6 +32,12 @@ class FlowStore:
     def has_flow(self, flow_id: str) -> bool:
         return flow_id in self.df.index
 
+    def get_flow(self, flow_id: str) -> dict | None:
+        """Return one evidence flow without exposing its ground-truth label."""
+        if not self.has_flow(flow_id):
+            return None
+        return _clean(self.df.loc[flow_id])
+
     def flows_for_host(self, ip, start=None, end=None, limit=10):
         d = self.df
         mask = (d["src_ip"] == ip) | (d["dst_ip"] == ip)

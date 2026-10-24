@@ -5,13 +5,12 @@ playbook=False (free)    : the model alone decides which tools to call.
 """
 from itertools import zip_longest
 import json
-import re
 import sys
 import time
 
 import ollama
 
-from src.agent.attack_rag import AttackKnowledge
+from src.agent.attack_rag import AttackKnowledge, describe_attack_class
 from src.agent.contract import load_incidents
 from src.agent.flow_store import FlowStore
 from src.agent.tools import ForensicTools
@@ -24,7 +23,7 @@ Investigate the incident the user names, using ONLY tool results.
 Rules:
 1. Never invent IP addresses, ports, timestamps, flow IDs, counts or MITRE ATT&CK IDs. Use only values that appear in tool results.
 2. Tool results may already be included in the user message. Use them. If you need more, call a tool: get_flows for exact flow records, host_summary for a host.
-3. Choose an ATT&CK technique for each stage ONLY from the search results for that stage. If none fits well, say so.
+3. Treat ATT&CK search results as retrieved candidates only. Stage query flow IDs are search context, not technique-specific evidence. Do not describe a candidate as observed or confirmed; say it needs analyst review unless the result contains candidate-specific evidence links.
 4. A host that is first a target and later a source of attacks may have been compromised. Say "possibly" unless the evidence shows it.
 5. Write a short summary with: overview, timeline in order, hosts and their roles, ATT&CK technique per stage, and limits of the evidence.
 6. Support every claim with the flow_id(s) it rests on, written like [flw_000123], using only flow IDs present in the tool results.
@@ -33,53 +32,31 @@ Rules:
 TOOL_NAMES = ["list_incidents", "get_incident", "host_summary", "get_flows", "search_attack_knowledge"]
 
 
-def _norm(s: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+def _stage_query(attack_class: str, incident: dict, stage: dict) -> str:
+    observed = []
+    for flow in stage.get("evidence", []):
+        details = []
+        if flow.get("protocol") is not None:
+            details.append(f"protocol {flow['protocol']}")
+        if flow.get("dst_port") is not None:
+            details.append(f"destination port {flow['dst_port']}")
+        for field in (
+            "flow_duration", "tot_fwd_pkts", "tot_bwd_pkts",
+            "totlen_fwd_pkts", "totlen_bwd_pkts", "syn_flag_cnt", "rst_flag_cnt",
+        ):
+            if flow.get(field) is not None:
+                details.append(f"{field} {flow[field]}")
+        if details:
+            observed.append(f"{flow['flow_id']}: " + ", ".join(details))
 
-
-# How analysts describe the CICIDS2017 attack classes (the detector's class names).
-CLASS_DESCRIPTIONS = {
-    _norm(k): v
-    for k, v in {
-        "SSH-Patator": "repeated failed SSH login attempts guessing passwords (brute force)",
-        "FTP-Patator": "repeated failed FTP login attempts guessing passwords (brute force)",
-        "PortScan": "port scan probing many ports and hosts for open services",
-        "DoS Hulk": "denial of service flood of HTTP requests overwhelming a web server",
-        "DoS GoldenEye": "denial of service flood of HTTP requests overwhelming a web server",
-        "DoS slowloris": "slow HTTP connections exhausting a web server (denial of service)",
-        "DoS Slowhttptest": "slow HTTP connections exhausting a web server (denial of service)",
-        "DDoS": "distributed denial of service flood of traffic from many sources",
-        "Bot": "infected host repeatedly beaconing to a command and control server over web protocols",
-        "Infiltration": "large outbound data transfer to an external server (data exfiltration)",
-        "Web Attack Brute Force": "repeated login attempts guessing passwords on a web application",
-        "Web Attack XSS": "cross-site scripting attack against a web application",
-        "Web Attack Sql Injection": "SQL injection exploiting a vulnerability in a public-facing web application",
-        "Heartbleed": "exploiting a vulnerability in a public-facing service to leak memory",
-    }.items()
-}
-
-EXTRA_DESCRIPTIONS = {
-    "DNS-Amplification": "DNS amplification reflection flood of large DNS responses sent to a victim",
-    "NTP-Reflection": "NTP reflection amplification flood sent to a victim",
-    "SYN-Flood": "TCP SYN flood denial of service against a server",
-    "Backdoor": "backdoor giving persistent remote access to a compromised host",
-    "Exploits": "exploiting a vulnerability in a network service for remote code execution",
-    "Fuzzers": "fuzzing a network service with malformed or random input to discover exploitable vulnerabilities",
-    "Reconnaissance": "port scanning and probing many hosts and ports to discover open network services",
-    "C2-Heartbeat": "infected host repeatedly beaconing to a command and control server at regular intervals",
-    "HTTPS-Exfiltration": "large upload of stolen data to an external server over HTTPS, exfiltration over web services",
-    "Lateral-SMB-Relay": "lateral movement between internal hosts over SMB, relaying captured credentials, SMB relay",
-}
-
-
-def _stage_query(attack_class: str) -> str:
-    key = _norm(attack_class)
-    if key in CLASS_DESCRIPTIONS:
-        return CLASS_DESCRIPTIONS[key]
-    for name, text in EXTRA_DESCRIPTIONS.items():
-        if _norm(name) == key:
-            return text
-    return f"{attack_class} network attack"
+    context = (
+        f"Incident {incident['incident_id']}, severity {incident['severity_score']}; "
+        f"stage {attack_class} from {stage['first_seen']} to {stage['last_seen']} "
+        f"with {stage['alert_count']} alerts. "
+    )
+    if observed:
+        context += "Observed flow metadata: " + "; ".join(observed) + ". "
+    return context + "Behavior description: " + describe_attack_class(attack_class)
 
 def pick_hosts(inc: dict, limit: int = 4) -> list[str]:
     """Hosts to look up in full, most informative first:
@@ -129,7 +106,18 @@ class ForensicAgent:
         attack = {}
         for stage in inc["stages_in_time_order"]:
             cls = stage["attack_class"]
-            attack[cls] = run("search_attack_knowledge", query=_stage_query(cls))
+            key = cls
+            suffix = 2
+            while key in attack:
+                key = f"{cls} [{suffix}]"
+                suffix += 1
+            attack[key] = run(
+                "search_attack_knowledge",
+                query=_stage_query(cls, inc, stage),
+                attack_class=cls,
+                flow_ids=stage.get("flow_ids", []),
+                incident_id=incident_id,
+            )
         return {"incident": inc, "host_summaries": summaries, "attack_matches": attack}, None
 
     def investigate(self, incident_id: str, playbook: bool = True) -> dict:
