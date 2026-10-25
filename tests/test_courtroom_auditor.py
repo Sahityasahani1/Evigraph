@@ -109,6 +109,9 @@ class TestCourtroomCrossExaminer(unittest.TestCase):
 
     def test_certified_verdict_export(self):
         """Test that run() exports structured verdict JSON and markdown transcript."""
+        if not self.report_path.exists() or not self.cert_path.exists():
+            self.skipTest("Incident cases or Merkle certificate not found.")
+
         v_path, md_path = self.examiner.run()
         self.assertTrue(v_path.exists())
         self.assertTrue(md_path.exists())

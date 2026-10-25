@@ -10,7 +10,8 @@ from src.agent.flow_store import FlowStore
 from src.agent.tools import ForensicTools
 
 pytestmark = pytest.mark.skipif(
-    not (EVAL / "ground_truth.json").exists(), reason="run make_eval_data first"
+    not (EVAL / "flows.csv").exists() or not (EVAL / "ground_truth.json").exists(),
+    reason="run make_eval_data first",
 )
 
 
