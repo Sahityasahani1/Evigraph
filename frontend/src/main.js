@@ -20,6 +20,7 @@ import {
   filteredEvents,
   incidentCardHtml,
   incidentMatches,
+  mergeIncidents,
   overviewHtml,
   observedReplayEvents,
   reportHtml,
@@ -91,13 +92,27 @@ function renderIncidentList() {
 async function refreshIncidents() {
   $('incidentList').innerHTML = '<div class="inline-loading"><span class="spinner small"></span> Loading incidents…</div>';
   try {
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const initialJobId = urlParams ? (urlParams.get('job_id') || urlParams.get('job')) : null;
+    if (initialJobId) {
+      try {
+        const freshIncidents = await getInvestigationIncidents(initialJobId);
+        if (freshIncidents?.length) {
+          const fresh = freshIncidents.map(incident => ({
+            ...incident,
+            _sourceKey: `fresh:${initialJobId}:${incident.incident_id}`,
+            investigation_job_id: initialJobId,
+            inference_source: 'fresh',
+          }));
+          state.incidents = mergeIncidents(state.incidents, fresh, { isFresh: true });
+        }
+      } catch (err) {
+        console.warn('Failed to load initial job from URL:', err);
+      }
+    }
     const incidents = await listIncidents();
-    state.incidents = incidents.map(incident => ({
-      ...incident,
-      _sourceKey: incident.inference_source === 'fresh' && incident.investigation_job_id
-        ? `fresh:${incident.investigation_job_id}:${incident.incident_id}`
-        : incident.incident_id,
-    }));
+    state.incidents = mergeIncidents(state.incidents, incidents, { isFresh: false });
+
     setConnection('API connected');
     renderIncidentList();
     if (!state.incidents.length) {
@@ -106,7 +121,9 @@ async function refreshIncidents() {
       $('loadState').innerHTML = '<span class="state-symbol" aria-hidden="true">—</span><div><strong>No incidents available</strong><p>Choose a flow file and run an investigation to create a fresh case.</p></div>';
       return;
     }
-    await selectIncident(state.incidents[0]._sourceKey);
+    const currentKey = state.sourceKey;
+    const stillExists = currentKey && state.incidents.some(item => item._sourceKey === currentKey);
+    await selectIncident(stillExists ? currentKey : state.incidents[0]._sourceKey);
   } catch (error) {
     setConnection('API unavailable', true);
     $('incidentList').innerHTML = `<div class="empty-state list-empty"><strong>Incident list unavailable</strong><p>${esc(error.message)}</p><button type="button" class="button button-secondary" id="retryList">Retry</button></div>`;
@@ -457,13 +474,21 @@ async function runFreshInvestigation() {
       investigation_job_id: job.job_id,
       inference_source: 'fresh',
     }));
+    const selectedModel = status.result?.selected_detector || status.result?.model_type || 'xgb';
+    const selectedName = selectedModel === 'gnn' ? 'GraphSAGE GNN' : 'XGBoost';
+    const reason = status.result?.selection_reason;
     if (!fresh.length) {
-      progress.textContent = `Fresh inference complete: ${status.result?.alerts ?? 0} alerts; no incidents were formed.`;
+      const autoNote = $('detector').value === 'auto' ? ` (Auto: ${selectedName})` : '';
+      progress.textContent = `Fresh inference complete${autoNote}: ${status.result?.alerts ?? 0} alerts; no incidents were formed.`;
       return;
     }
-    state.incidents = [...fresh, ...state.incidents.filter(item => !fresh.some(next => next._sourceKey === item._sourceKey))];
+    state.incidents = mergeIncidents(state.incidents, fresh, { isFresh: true });
     renderIncidentList();
-    progress.textContent = `${status.result?.flows_scored ?? '—'} flows · ${status.result?.alerts ?? '—'} alerts · ${fresh.length} incidents`;
+    if ($('detector').value === 'auto') {
+      progress.textContent = `${status.result?.flows_scored ?? '—'} flows · ${status.result?.alerts ?? '—'} alerts · ${fresh.length} incidents · Auto selected: ${selectedName}${reason ? ` (${reason})` : ''}`;
+    } else {
+      progress.textContent = `${status.result?.flows_scored ?? '—'} flows · ${status.result?.alerts ?? '—'} alerts · ${fresh.length} incidents`;
+    }
     await selectIncident(fresh[0]._sourceKey);
   } catch (error) {
     progress.textContent = `Investigation failed: ${error.message}`;
@@ -506,6 +531,41 @@ document.addEventListener('click', event => {
   }
   if (event.target.closest('[data-retry-report]')) loadReport();
   if (event.target.closest('#retryLoad, #retryList')) refreshIncidents();
+});
+
+const inputFile = $('inputFile');
+const selectedFileInfo = $('selectedFileInfo');
+const selectedFileName = $('selectedFileName');
+const selectedFileSize = $('selectedFileSize');
+const clearSelectedFile = $('clearSelectedFile');
+
+function updateSelectedFile() {
+  const file = inputFile?.files?.[0];
+
+  if (selectedFileInfo) {
+    selectedFileInfo.hidden = !file;
+  }
+
+  if (!file) {
+    if (selectedFileName) selectedFileName.textContent = '';
+    if (selectedFileSize) selectedFileSize.textContent = '';
+    return;
+  }
+
+  if (selectedFileName) selectedFileName.textContent = file.name;
+
+  const size = file.size < 1024 * 1024
+    ? `${(file.size / 1024).toFixed(1)} KB`
+    : `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+
+  if (selectedFileSize) selectedFileSize.textContent = size;
+}
+
+inputFile?.addEventListener('change', updateSelectedFile);
+
+clearSelectedFile?.addEventListener('click', () => {
+  if (inputFile) inputFile.value = '';
+  updateSelectedFile();
 });
 
 $('incidentSearch').addEventListener('input', renderIncidentList);

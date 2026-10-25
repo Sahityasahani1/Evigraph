@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 
 from data.config import settings
 from data.evidence import AuditLogger
-from data.schema import validate_and_canonicalize
+from data.schema import validate, validate_and_canonicalize
 
 
 class ParquetStorageEngine:
@@ -46,6 +46,7 @@ class ParquetStorageEngine:
         Optionally writes a sidecar manifest and records an audit action upon completion.
         """
         df_clean = validate_and_canonicalize(df)
+        validate(df_clean)
         out_path = self.output_dir / filename
 
         # Convert to PyArrow table

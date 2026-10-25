@@ -99,7 +99,9 @@ def run_pipeline(
                 f"Please ensure 'torch' and 'torch_geometric' are installed."
             )
         detector = GNNDetector(model_name="gnn_edge_sage")
-        checkpoint_path = MODELS_DIR / "gnn_edge_sage.pt"
+        migrated_path = MODELS_DIR / "gnn_edge_sage.migrated-legacy-v2.pt"
+        default_path = MODELS_DIR / "gnn_edge_sage.pt"
+        checkpoint_path = migrated_path if migrated_path.is_file() else default_path
         if load_checkpoint:
             if not checkpoint_path.exists():
                 raise FileNotFoundError(
@@ -111,7 +113,10 @@ def run_pipeline(
             print("\n--- Training PyTorch Geometric Edge-GraphSAGE Detector ---")
             detector.train(X_train, y_train, meta_train, X_val, y_val, meta_val, epochs=25)
             detector.save(checkpoint_path)
-        detector.validate_inference_split(meta_test)
+        if detector.migration_metadata:
+            print("[GNN Detector] Notice: Migrated legacy checkpoint used; temporal isolation unverified.")
+        else:
+            detector.validate_inference_split(meta_test)
         scored_test_df = detector.score_flows(X_test, meta_test)
     else:
         detector = BaselineDetector(model_name="xgboost_baseline")

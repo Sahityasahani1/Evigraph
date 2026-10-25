@@ -21,7 +21,14 @@
       <div class="topbar-actions">
         <label class="file-picker" for="inputFile">Choose flow or capture</label>
         <input id="inputFile" type="file" accept=".csv,.parquet,.pcap,.pcapng" />
+
+        <div id="selectedFileInfo" class="selected-file-info" hidden>
+          <span id="selectedFileName"></span>
+          <span id="selectedFileSize"></span>
+          <button type="button" id="clearSelectedFile">Remove</button>
+        </div>
         <select id="detector" aria-label="Detection model">
+          <option value="auto" selected>Auto</option>
           <option value="xgb">XGBoost</option>
           <option value="gnn">GraphSAGE GNN (migrated legacy; temporal isolation unverified)</option>
         </select>

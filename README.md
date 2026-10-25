@@ -364,7 +364,7 @@ python -m unittest tests/test_counterfactual_engine.py
 python -m unittest discover -s tests
 ```
 
-* **Temporal Split Only:** Never use random splits. The detection runner uses globally chronological train/validation/test partitions, so each partition starts after the previous one ends.
+* **Temporal Split Only:** Never use random splits. The loader and benchmark exporter default to globally chronological train/validation/test partitions, so each partition starts after the previous one ends. Per-class splitting is available only as an explicit opt-in and can overlap time ranges.
 * **Leakage Controls:** IP addresses, MACs, and port numbers must never be features for tabular models; they are strictly metadata.
 * **Traceability:** Every alert emitted by Member 2 references an immutable `flow_id` and `evidence_id`.
 * **Zero-Day Resilience:** The unsupervised autoencoder complements supervised models by flagging zero-day reconstruction anomalies without prior attack signatures.

@@ -173,3 +173,75 @@ def test_real_report_api_preserves_evidence_grounded_attack_retrieval(monkeypatc
     assert result["matches"][0] == match
     assert report["sentences"][0]["stage_id"] == "INC-001-stage-1"
 
+
+
+
+def test_group_fallback_stages_summarizes_portscan_and_ssh_patator():
+    from frontend.api.server import _group_fallback_stages, _validate_fallback_citations
+
+    # Construct 100 PortScan stages and 60 SSH-Patator stages
+    stages = []
+    flow_ids = []
+    for i in range(1, 101):
+        fid = f"flw_scan_{i:04d}"
+        flow_ids.append(fid)
+        stages.append({
+            "stage_id": f"INC-0001-stage-{i}",
+            "src": "172.16.0.105",
+            "dst": "192.168.10.50",
+            "behavior": "PortScan",
+            "tactic": "Reconnaissance",
+            "summary": "PortScan activity on port 80",
+            "evidence": [{"flow_id": fid}],
+        })
+    for i in range(101, 161):
+        fid = f"flw_ssh_{i:04d}"
+        flow_ids.append(fid)
+        stages.append({
+            "stage_id": f"INC-0001-stage-{i}",
+            "src": "172.16.0.105",
+            "dst": "192.168.10.50",
+            "behavior": "SSH-Patator",
+            "tactic": "Credential Access",
+            "summary": "SSH-Patator activity on port 22",
+            "evidence": [{"flow_id": fid}],
+        })
+
+    sentences = _group_fallback_stages(stages)
+
+    # 1. Summarized separately into 2 concise groups
+    assert len(sentences) == 2
+    assert "Observed 100 flows of PortScan activity" in sentences[0]["text"]
+    assert "Observed 60 flows of SSH-Patator activity" in sentences[1]["text"]
+
+    # 2. All 160 flow IDs remain traceable
+    cited_ids = sentences[0]["evidence_ids"] + sentences[1]["evidence_ids"]
+    assert len(cited_ids) == 160
+    assert set(cited_ids) == set(flow_ids)
+
+    # 3. Validation succeeds when all flows exist in store
+    class MockStore:
+        def get_flow(self, fid):
+            return {"flow_id": fid} if fid in set(flow_ids) else None
+
+    incident = {
+        "incident_id": "INC-0001",
+        "evidence_flow_ids": list(flow_ids),
+        "alerts": [{"flow_id": fid} for fid in flow_ids],
+    }
+    normalized = {"stages": stages}
+    res = _validate_fallback_citations(sentences, incident, normalized, MockStore())
+    assert res == {"valid": 2, "total": 2, "rejected": 0}
+
+    # 4. Invalid evidence ID is rejected
+    tampered = [
+        dict(sentences[0]),
+        {
+            "text": "Tampered statement",
+            "stage_id": sentences[1]["stage_id"],
+            "stage_ids": sentences[1]["stage_ids"],
+            "evidence_ids": ["flw_nonexistent"],
+        },
+    ]
+    res_tampered = _validate_fallback_citations(tampered, incident, normalized, MockStore())
+    assert res_tampered == {"valid": 1, "total": 2, "rejected": 1}

@@ -9,6 +9,7 @@ Verifies Prompt 4 requirements:
 """
 
 import json
+import csv
 from pathlib import Path
 
 import pytest
@@ -158,6 +159,65 @@ def test_parse_cicids_cleaning_drop_reasons(tmp_path):
     assert report["drop_reasons"]["inf_or_nan_features"] == 1
     assert report["drop_reasons"]["negative_duration"] == 1
     assert report["drop_reasons"]["repeated_headers"] == 1
+
+
+@pytest.mark.parametrize(
+    ("missing_column", "message"),
+    [
+        ("Source IP", "missing required network metadata.*src_ip"),
+        ("Destination IP", "missing required network metadata.*dst_ip"),
+        ("Timestamp", "missing required network metadata.*timestamp"),
+    ],
+)
+def test_parse_cicids_rejects_missing_network_metadata(tmp_path, missing_column, message):
+    row = {
+        "Source IP": "192.0.2.1",
+        "Destination IP": "198.51.100.2",
+        "Timestamp": "2026-10-18T10:00:00Z",
+        "Source Port": 50000,
+        "Destination Port": 443,
+        "Protocol": 6,
+        "Flow Duration": 1_000_000,
+        "Label": "BENIGN",
+    }
+    del row[missing_column]
+    source = tmp_path / "missing_metadata.csv"
+    with source.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=row)
+        writer.writeheader()
+        writer.writerow(row)
+
+    with pytest.raises(ValueError, match=message):
+        parse_cicids(source, report_path=tmp_path / "cleaning_report.json")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("Source IP", "not-an-ip", "src_ip.*missing or invalid IP"),
+        ("Timestamp", "not-a-time", "missing or invalid timestamps"),
+    ],
+)
+def test_parse_cicids_rejects_invalid_network_metadata(tmp_path, field, value, message):
+    row = {
+        "Source IP": "192.0.2.1",
+        "Destination IP": "198.51.100.2",
+        "Timestamp": "2026-10-18T10:00:00Z",
+        "Source Port": 50000,
+        "Destination Port": 443,
+        "Protocol": 6,
+        "Flow Duration": 1_000_000,
+        "Label": "BENIGN",
+    }
+    row[field] = value
+    source = tmp_path / "invalid_metadata.csv"
+    with source.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=row)
+        writer.writeheader()
+        writer.writerow(row)
+
+    with pytest.raises(ValueError, match=message):
+        parse_cicids(source, report_path=tmp_path / "cleaning_report.json")
 
 
 def test_parse_zeek_conn_tsv(tmp_path):

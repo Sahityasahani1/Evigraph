@@ -16,6 +16,8 @@ from typing import List
 
 import pandas as pd
 
+from data.schema import validate_ip_addresses
+
 
 def compute_flow_5tuple_str(
     src_ip: str,
@@ -74,20 +76,26 @@ def make_flow_ids(
     # 1. Extract ts_start_ns (nanoseconds since epoch)
     if "ts_start_ns" in df_work.columns:
         ts_ns = df_work["ts_start_ns"].astype("int64")
-    elif "ts_start" in df_work.columns:
-        ts_ns = pd.to_datetime(df_work["ts_start"], utc=True).astype("int64")
-    elif "timestamp" in df_work.columns:
-        ts_ns = pd.to_datetime(df_work["timestamp"], utc=True).astype("int64")
     else:
-        ts_ns = pd.Series(0, index=df_work.index, dtype="int64")
+        if "ts_start" in df_work.columns:
+            timestamp_source = df_work["ts_start"]
+        elif "timestamp" in df_work.columns:
+            timestamp_source = df_work["timestamp"]
+        else:
+            raise ValueError("Flow ID generation requires 'ts_start' or 'timestamp'.")
+        timestamps = pd.to_datetime(timestamp_source, utc=True, errors="coerce")
+        if timestamps.isna().any():
+            rows = ", ".join(map(str, df_work.index[timestamps.isna()][:5]))
+            raise ValueError(
+                "Flow ID generation found missing or invalid timestamps "
+                f"at row index(es): {rows}."
+            )
+        ts_ns = timestamps.astype("int64")
 
+    validate_ip_addresses(df_work)
     df_work["_ts_start_ns"] = ts_ns
 
-    # Default missing mandatory keys if absent
-    if "src_ip" not in df_work.columns:
-        df_work["src_ip"] = "0.0.0.0"
-    if "dst_ip" not in df_work.columns:
-        df_work["dst_ip"] = "0.0.0.0"
+    # Default optional transport metadata if absent
     if "src_port" not in df_work.columns:
         df_work["src_port"] = 0
     if "dst_port" not in df_work.columns:

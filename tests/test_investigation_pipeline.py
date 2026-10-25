@@ -98,7 +98,16 @@ def test_supported_flow_input_builds_fresh_incident_and_preserves_evidence(
     assert scored["source_sha256"].eq(result["source_sha256"]).all()
 
 
+@pytest.mark.slow
 def test_report_validation_and_job_api_can_retrieve_cited_flow(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "ollama.chat",
+        lambda **_kwargs: (_ for _ in ()).throw(ConnectionError("offline test")),
+    )
+    monkeypatch.setattr(
+        "ollama.embed",
+        lambda **_kwargs: (_ for _ in ()).throw(ConnectionError("offline test")),
+    )
     source, flow_ids, result = run_fixed_pipeline(tmp_path, monkeypatch)
     cases = json.loads(Path(result["cases_path"]).read_text(encoding="utf-8"))
     incident_id = cases["incidents"][0]["incident_id"]
@@ -294,7 +303,11 @@ def test_upload_validation_and_nonblocking_job_progress(tmp_path, monkeypatch):
         accepted = client.post(
             "/investigations",
             content=b"flow data",
-            headers={"X-Filename": "flows.csv", "Content-Type": "application/octet-stream"},
+            headers={
+                "X-Filename": "flows.csv",
+                "X-Detector": "xgb",
+                "Content-Type": "application/octet-stream",
+            },
         )
         assert accepted.status_code == 202
         job_id = accepted.json()["job_id"]

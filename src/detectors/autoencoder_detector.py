@@ -205,7 +205,10 @@ class AutoencoderDetector:
 
     def load(self, model_dir: Path = MODELS_DIR):
         model_path = model_dir / f"{self.model_name}.pt"
-        checkpoint = torch.load(model_path, map_location=self.device)
+        try:
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+        except TypeError:
+            checkpoint = torch.load(model_path, map_location=self.device)
         self.feature_columns = checkpoint["feature_columns"]
         self.scaler = checkpoint["scaler"]
         self.calibrator = checkpoint["calibrator"]

@@ -27,6 +27,7 @@ CANONICAL SCHEMA v1.1 Column Order:
 """
 
 from typing import Dict, List, Set
+from ipaddress import ip_address
 
 import numpy as np
 import pandas as pd
@@ -95,6 +96,31 @@ MANDATORY_KEYS: List[str] = [
 VALID_SOURCE_TYPES = {"cicids", "zeek", "pcap"}
 
 
+def validate_ip_addresses(df: pd.DataFrame) -> None:
+    """Reject missing or malformed source/destination IP addresses."""
+    for column in ("src_ip", "dst_ip"):
+        if column not in df.columns:
+            raise ValueError(f"Missing required network metadata column '{column}'.")
+
+        invalid_rows = []
+        for index, value in df[column].items():
+            if pd.isna(value) or not str(value).strip():
+                invalid_rows.append(index)
+                continue
+            try:
+                ip_address(str(value).strip())
+            except ValueError:
+                invalid_rows.append(index)
+
+        if invalid_rows:
+            preview = ", ".join(map(str, invalid_rows[:5]))
+            suffix = "..." if len(invalid_rows) > 5 else ""
+            raise ValueError(
+                f"Column '{column}' contains missing or invalid IP addresses "
+                f"at row index(es): {preview}{suffix}."
+            )
+
+
 def build_canonical_arrow_schema() -> pa.Schema:
     """Constructs the canonical PyArrow schema v1.1 with ordered fields."""
     fields = [
@@ -157,6 +183,8 @@ def validate(df: pd.DataFrame) -> bool:
             null_count = df[k].isna().sum()
             raise ValueError(f"Column '{k}' contains {null_count} null/NaN values; non-null required.")
 
+    validate_ip_addresses(df)
+
     # 3. Protocol validation: must be integer, NEVER string
     if not pd.api.types.is_integer_dtype(df["protocol"]):
         raise TypeError(
@@ -194,8 +222,14 @@ def validate(df: pd.DataFrame) -> bool:
             raise ValueError(f"duration cannot be negative, got {neg}.")
 
     # 6. Temporal constraint: ts_end >= ts_start
-    t_start = pd.to_datetime(df["ts_start"], utc=True)
-    t_end = pd.to_datetime(df["ts_end"], utc=True)
+    t_start = pd.to_datetime(df["ts_start"], utc=True, errors="coerce")
+    t_end = pd.to_datetime(df["ts_end"], utc=True, errors="coerce")
+    if t_start.isna().any():
+        rows = ", ".join(map(str, df.index[t_start.isna()][:5]))
+        raise ValueError(f"Column 'ts_start' contains invalid timestamps at row index(es): {rows}.")
+    if t_end.isna().any():
+        rows = ", ".join(map(str, df.index[t_end.isna()][:5]))
+        raise ValueError(f"Column 'ts_end' contains invalid timestamps at row index(es): {rows}.")
     if (t_end < t_start).any():
         violations = (t_end < t_start).sum()
         raise ValueError(f"ts_end must be >= ts_start; found {violations} temporal paradoxes.")
@@ -248,6 +282,10 @@ def canonicalize(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
+    validate_ip_addresses(df)
+    df["src_ip"] = df["src_ip"].astype(str).str.strip()
+    df["dst_ip"] = df["dst_ip"].astype(str).str.strip()
+
     # Protocol handling: convert string, float, or int to int16 (0-255)
     if "protocol" in df.columns:
         df["protocol"] = df["protocol"].apply(parse_protocol_value).astype("int16")
@@ -264,14 +302,28 @@ def canonicalize(df: pd.DataFrame) -> pd.DataFrame:
 
     # Timestamps
     if "ts_start" in df.columns:
-        df["ts_start"] = pd.to_datetime(df["ts_start"], utc=True)
+        timestamp_source = df["ts_start"]
+        timestamp_name = "ts_start"
     elif "timestamp" in df.columns:
-        df["ts_start"] = pd.to_datetime(df["timestamp"], utc=True)
+        timestamp_source = df["timestamp"]
+        timestamp_name = "timestamp"
     else:
-        df["ts_start"] = pd.to_datetime("2026-10-18T00:00:00Z", utc=True)
+        raise ValueError("Missing required flow timestamp column 'ts_start' or 'timestamp'.")
+    parsed_start = pd.to_datetime(timestamp_source, utc=True, errors="coerce")
+    if parsed_start.isna().any():
+        rows = ", ".join(map(str, df.index[parsed_start.isna()][:5]))
+        raise ValueError(
+            f"Column '{timestamp_name}' contains missing or invalid timestamps "
+            f"at row index(es): {rows}."
+        )
+    df["ts_start"] = parsed_start
 
     if "ts_end" in df.columns:
-        df["ts_end"] = pd.to_datetime(df["ts_end"], utc=True)
+        parsed_end = pd.to_datetime(df["ts_end"], utc=True, errors="coerce")
+        if parsed_end.isna().any():
+            rows = ", ".join(map(str, df.index[parsed_end.isna()][:5]))
+            raise ValueError(f"Column 'ts_end' contains invalid timestamps at row index(es): {rows}.")
+        df["ts_end"] = parsed_end
     elif "duration" in df.columns:
         df["ts_end"] = df["ts_start"] + pd.to_timedelta(df["duration"], unit="s")
     elif "flow_duration" in df.columns:
@@ -335,10 +387,6 @@ def canonicalize(df: pd.DataFrame) -> pd.DataFrame:
     elif "totlen_bwd_pkts" in df.columns and "tot_len_bwd_pkts" not in df.columns:
         df["tot_len_bwd_pkts"] = df["totlen_bwd_pkts"].astype("float32")
 
-    if "src_ip" not in df.columns:
-        df["src_ip"] = "192.168.10.50"
-    if "dst_ip" not in df.columns:
-        df["dst_ip"] = "172.16.0.1"
     df["src_port"] = df.get("src_port", 0).fillna(0).astype("int32")
     df["dst_port"] = df.get("dst_port", 0).fillna(0).astype("int32")
 

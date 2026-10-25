@@ -318,12 +318,12 @@ class FlowState:
         fwd_max = float(np.max(f_len)) if f_len else 0.0
         fwd_min = float(np.min(f_len)) if f_len else 0.0
         fwd_mean = float(np.mean(f_len)) if f_len else 0.0
-        fwd_std = float(np.std(f_len)) if len(f_len) > 1 else 0.0
+        fwd_std = float(np.std(f_len, ddof=1)) if len(f_len) > 1 else 0.0
 
         bwd_max = float(np.max(b_len)) if b_len else 0.0
         bwd_min = float(np.min(b_len)) if b_len else 0.0
         bwd_mean = float(np.mean(b_len)) if b_len else 0.0
-        bwd_std = float(np.std(b_len)) if len(b_len) > 1 else 0.0
+        bwd_std = float(np.std(b_len, ddof=1)) if len(b_len) > 1 else 0.0
 
         # Flow rates (bytes/s and pkts/s)
         dur_divisor = max(1e-6, duration_sec)
@@ -345,7 +345,7 @@ class FlowState:
         ]
 
         flow_iat_mean = float(np.mean(all_iats)) if all_iats else 0.0
-        flow_iat_std = float(np.std(all_iats)) if len(all_iats) > 1 else 0.0
+        flow_iat_std = float(np.std(all_iats, ddof=1)) if len(all_iats) > 1 else 0.0
         flow_iat_max = float(np.max(all_iats)) if all_iats else 0.0
         flow_iat_min = float(np.min(all_iats)) if all_iats else 0.0
 

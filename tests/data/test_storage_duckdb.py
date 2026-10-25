@@ -3,6 +3,7 @@ Tests for Parquet Storage & DuckDB Catalog
 """
 
 import pandas as pd
+import pytest
 
 from data.query import QueryAPI
 from data.storage import DuckDBCatalog, ParquetStorageEngine
@@ -13,6 +14,7 @@ def test_parquet_storage_and_duckdb(tmp_path):
     df = pd.DataFrame([
         {
             "flow_id": "flw_test_001",
+            "evidence_id": "ev_test_capture",
             "src_ip": "192.168.10.5",
             "dst_ip": "8.8.8.8",
             "src_port": 50000,
@@ -25,6 +27,7 @@ def test_parquet_storage_and_duckdb(tmp_path):
         },
         {
             "flow_id": "flw_test_002",
+            "evidence_id": "ev_test_capture",
             "src_ip": "172.16.0.100",
             "dst_ip": "192.168.10.5",
             "src_port": 45000,
@@ -59,3 +62,60 @@ def test_parquet_storage_and_duckdb(tmp_path):
     assert len(host_flows) == 2
 
     catalog.close()
+
+
+@pytest.mark.parametrize(
+    ("metadata", "message"),
+    [
+        ({"src_ip": None}, "src_ip.*missing or invalid IP"),
+        ({"dst_ip": "192.0.2.999"}, "dst_ip.*missing or invalid IP"),
+        ({"timestamp": None}, "timestamp.*missing or invalid timestamps"),
+        ({"timestamp": "yesterday-ish"}, "timestamp.*missing or invalid timestamps"),
+    ],
+)
+def test_parquet_storage_rejects_invalid_network_metadata(tmp_path, metadata, message):
+    storage = ParquetStorageEngine(output_dir=tmp_path)
+    row = {
+        "flow_id": "flw_invalid_metadata",
+        "evidence_id": "ev_test_capture",
+        "src_ip": "192.0.2.1",
+        "dst_ip": "198.51.100.2",
+        "src_port": 50000,
+        "dst_port": 443,
+        "protocol": 6,
+        "timestamp": "2026-10-18T10:00:00Z",
+    }
+    row.update(metadata)
+
+    with pytest.raises(ValueError, match=message):
+        storage.write_parquet(pd.DataFrame([row]), "invalid.parquet")
+    assert not (tmp_path / "invalid.parquet").exists()
+
+
+@pytest.mark.parametrize(
+    ("missing_column", "message"),
+    [
+        ("src_ip", "Missing required network metadata column 'src_ip'"),
+        ("dst_ip", "Missing required network metadata column 'dst_ip'"),
+        ("timestamp", "Missing required flow timestamp column"),
+    ],
+)
+def test_parquet_storage_rejects_missing_metadata_columns(
+    tmp_path, missing_column, message
+):
+    storage = ParquetStorageEngine(output_dir=tmp_path)
+    row = {
+        "flow_id": "flw_missing_metadata",
+        "evidence_id": "ev_test_capture",
+        "src_ip": "192.0.2.1",
+        "dst_ip": "198.51.100.2",
+        "src_port": 50000,
+        "dst_port": 443,
+        "protocol": 6,
+        "timestamp": "2026-10-18T10:00:00Z",
+    }
+    del row[missing_column]
+
+    with pytest.raises(ValueError, match=message):
+        storage.write_parquet(pd.DataFrame([row]), "missing.parquet")
+    assert not (tmp_path / "missing.parquet").exists()

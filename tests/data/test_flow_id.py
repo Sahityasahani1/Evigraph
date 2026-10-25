@@ -9,6 +9,7 @@ Covers:
 """
 
 import pandas as pd
+import pytest
 from hypothesis import HealthCheck, given
 from hypothesis import settings as hyp_settings
 from hypothesis import strategies as st
@@ -116,6 +117,31 @@ def test_make_flow_ids_unique_and_collision_check():
 
     assert len(ids) == len(set(ids))
     assert len(ids) == 25
+
+
+@pytest.mark.parametrize(
+    ("removed_column", "message"),
+    [
+        ("src_ip", "Missing required network metadata column 'src_ip'"),
+        ("timestamp", "requires 'ts_start' or 'timestamp'"),
+    ],
+)
+def test_make_flow_ids_rejects_missing_required_metadata(removed_column, message):
+    df = pd.DataFrame(
+        [
+            {
+                "src_ip": "192.0.2.1",
+                "dst_ip": "198.51.100.2",
+                "src_port": 50000,
+                "dst_port": 443,
+                "protocol": 6,
+                "timestamp": "2026-10-18T10:00:00Z",
+            }
+        ]
+    ).drop(columns=[removed_column])
+
+    with pytest.raises(ValueError, match=message):
+        make_flow_ids(df, "e" * 64)
 
 
 @given(

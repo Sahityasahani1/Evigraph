@@ -7,7 +7,7 @@ async function http(path, opts = {}) {
   const token = localStorage.getItem('evigraph_token');
   const res = await fetch(API_BASE + path, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(opts.headers || {}) },
   });
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
@@ -64,12 +64,13 @@ export async function getReport(id) {              // POST /incidents/{id}/repor
 }
 
 export async function startInvestigation(file, detector) {
+  const chosenDetector = (detector && detector !== 'undefined' && detector !== 'null') ? detector : 'auto';
   return freshHttp('/investigations', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/octet-stream',
-      'X-Filename': file.name,
-      'X-Detector': detector,
+      'X-Filename': file?.name || 'unknown.csv',
+      'X-Detector': chosenDetector,
     },
     body: file,
   });

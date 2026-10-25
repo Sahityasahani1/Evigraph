@@ -172,6 +172,15 @@ def parse_cicids(
     df = df.rename(columns=rename_targets)
     df = df.loc[:, ~df.columns.duplicated()]
 
+    missing_metadata = [
+        column for column in ("timestamp", "src_ip", "dst_ip") if column not in df.columns
+    ]
+    if missing_metadata:
+        raise ValueError(
+            "CICIDS input is missing required network metadata column(s): "
+            f"{missing_metadata}."
+        )
+
     # Evidence ID
     df["evidence_id"] = ev_id
 
@@ -232,16 +241,8 @@ def parse_cicids(
     ts_col = "timestamp" if "timestamp" in df.columns else ("Timestamp" if "Timestamp" in df.columns else None)
     if ts_col:
         df["ts_start"] = pd.to_datetime(df[ts_col], format="mixed", errors="coerce", utc=True)
-    else:
-        df["ts_start"] = pd.to_datetime("2026-10-18T00:00:00Z", utc=True)
 
     df["ts_end"] = df["ts_start"] + pd.to_timedelta(df["duration"], unit="s")
-
-    # Initialize missing network identity columns if absent in CSV
-    if "src_ip" not in df.columns:
-        df["src_ip"] = "192.168.10.50"
-    if "dst_ip" not in df.columns:
-        df["dst_ip"] = "172.16.0.1"
     if "src_port" not in df.columns:
         df["src_port"] = 0
 
@@ -266,6 +267,11 @@ def parse_cicids(
     remaining_mask = ~is_header
     invalid_ts = remaining_mask & df["ts_start"].isna()
     drop_reasons["invalid_timestamps"] = int(invalid_ts.sum())
+    if invalid_ts.any():
+        rows = ", ".join(map(str, df.index[invalid_ts][:5]))
+        raise ValueError(
+            f"CICIDS input contains missing or invalid timestamps at row index(es): {rows}."
+        )
 
     # Negative duration (known CICFlowMeter clock skew bug)
     remaining_mask = remaining_mask & (~invalid_ts)

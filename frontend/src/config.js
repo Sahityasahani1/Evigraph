@@ -1,5 +1,11 @@
-export const USE_MOCK = import.meta.env?.VITE_USE_MOCK !== 'false';
-export const API_BASE = import.meta.env?.VITE_API_BASE || '/api';
+const envUseMock = typeof import.meta !== 'undefined' && import.meta.env?.VITE_USE_MOCK !== undefined
+  ? import.meta.env.VITE_USE_MOCK
+  : (typeof process !== 'undefined' ? process.env?.VITE_USE_MOCK : undefined);
+
+export const USE_MOCK = envUseMock !== 'false';
+export const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE)
+  || (typeof process !== 'undefined' && process.env?.VITE_API_BASE)
+  || '/api';
 
 // Keyed by the tactic name the backend sends in stage.tactic (TRD 3.5 / PRD FR-5.2).
 export const TACTIC_COLORS = {

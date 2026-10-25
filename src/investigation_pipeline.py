@@ -135,18 +135,30 @@ def _detector_features(flows: pd.DataFrame, expected: list[str]) -> pd.DataFrame
 def run_investigation_pipeline(
     input_path: str | Path,
     output_dir: str | Path,
-    model_type: str = "xgb",
+    model_type: str = "auto",
     progress: ProgressCallback | None = None,
 ) -> dict:
     """Run inference and case construction on one uploaded flow file or capture."""
     source_path = Path(input_path)
     target_dir = Path(output_dir)
-    if model_type not in {"xgb", "gnn"}:
-        raise ValueError("Detector must be either 'xgb' or 'gnn'.")
+    req_model = (model_type or "auto").strip().lower()
+    if req_model not in {"auto", "xgb", "gnn"}:
+        raise ValueError("Detector must be 'auto', 'xgb', or 'gnn'.")
     if not source_path.is_file():
         raise FileNotFoundError(f"Input file not found: {source_path}")
     target_dir.mkdir(parents=True, exist_ok=True)
     update = progress or (lambda _message, _percent: None)
+
+    # Check for missing model directory or baseline artifact early
+    xgb_artifact = MODELS_DIR / "xgboost_baseline.joblib"
+    gnn_migrated = MODELS_DIR / "gnn_edge_sage.migrated-legacy-v2.pt"
+    gnn_pt = MODELS_DIR / "gnn_edge_sage.pt"
+    if req_model == "xgb" and not xgb_artifact.is_file():
+        raise FileNotFoundError(f"XGBoost model artifact not found at {xgb_artifact}")
+    if req_model == "gnn" and not gnn_migrated.is_file() and not gnn_pt.is_file():
+        raise FileNotFoundError(f"GNN model artifact not found at {gnn_pt}")
+    if req_model == "auto" and not xgb_artifact.is_file() and not gnn_migrated.is_file() and not gnn_pt.is_file():
+        raise FileNotFoundError(f"Model artifacts not found in {MODELS_DIR} (missing {xgb_artifact.name})")
 
     update("Hashing input", 5)
     source_sha256 = sha256_file(source_path)
@@ -161,33 +173,45 @@ def run_investigation_pipeline(
     # Ground-truth labels, if present in a source dataset, are intentionally excluded.
     metadata = metadata.drop(columns=["label"], errors="ignore")
 
-    update(f"Loading {model_type.upper()} checkpoint", 30)
-    if model_type == "gnn":
+    from src.detector_selector import select_detector
+
+    selection = select_detector(
+        flows,
+        metadata,
+        requested=req_model,
+        models_dir=MODELS_DIR,
+        baseline_cls=BaselineDetector,
+    )
+    selected_detector = selection.selected_detector
+    selection_reason = selection.selection_reason
+    fallback_reason = selection.fallback_reason
+
+    update(f"Loading {selected_detector.upper()} checkpoint", 30)
+    if selected_detector == "gnn":
         from src.gnn_detector import GNNDetector
 
         detector = GNNDetector(model_name="gnn_edge_sage")
-        migrated_path = MODELS_DIR / "gnn_edge_sage.migrated-legacy-v2.pt"
-        checkpoint_path = migrated_path if migrated_path.is_file() else MODELS_DIR / "gnn_edge_sage.pt"
+        checkpoint_path = gnn_migrated if gnn_migrated.is_file() else gnn_pt
         detector.load(checkpoint_path)
         if detector.migration_metadata:
             # Fresh inference is supported, while temporal evaluation remains unverified.
             detector_label = "gnn_legacy_migrated"
+            temporal_isolation_verified = False
         else:
             detector.validate_inference_split(metadata)
             detector_label = "gnn"
+            temporal_isolation_verified = True
         expected_features = detector.builder.feature_columns
     else:
         detector = BaselineDetector(model_name="xgboost_baseline")
         detector.load(MODELS_DIR)
         expected_features = detector.feature_columns
         detector_label = "xgb"
+        temporal_isolation_verified = False
 
     features = _detector_features(flows, expected_features)
     update("Running fresh flow inference", 50)
-    if model_type == "gnn":
-        scored = detector.score_flows(features, metadata)
-    else:
-        scored = detector.score_flows(features, metadata)
+    scored = detector.score_flows(features, metadata)
 
     scored["source_sha256"] = source_sha256
     alerts = scored.loc[scored["is_alert"].astype(bool)].copy()
@@ -198,7 +222,11 @@ def run_investigation_pipeline(
     incidents = incident_engine.correlate_alerts(alerts)
     for incident in incidents:
         incident["source_sha256"] = source_sha256
-        incident["detection_model"] = model_type
+        incident["detection_model"] = selected_detector
+        incident["detector_label"] = detector_label
+        incident["requested_detector"] = req_model
+        incident["selection_reason"] = selection_reason
+        incident["fallback_reason"] = fallback_reason
         incident["inference_source"] = "fresh"
 
     flows_path = target_dir / "scored_flows.parquet"
@@ -222,8 +250,13 @@ def run_investigation_pipeline(
         "input_filename": source_path.name,
         "input_sha256": source_sha256,
         "input_format": source_path.suffix.lower().lstrip("."),
-        "detector": model_type,
+        "detector": selected_detector,
+        "requested_detector": req_model,
+        "selected_detector": selected_detector,
+        "selection_reason": selection_reason,
+        "fallback_reason": fallback_reason,
         "detector_label": detector_label,
+        "temporal_isolation_verified": temporal_isolation_verified,
         "flows_scored": len(scored),
         "alerts": len(alerts),
         "labels_used_for_inference": False,
@@ -237,8 +270,13 @@ def run_investigation_pipeline(
         "source_sha256": source_sha256,
         "input_filename": source_path.name,
         "input_format": source_path.suffix.lower().lstrip("."),
-        "model_type": model_type,
+        "model_type": selected_detector,
+        "requested_detector": req_model,
+        "selected_detector": selected_detector,
+        "selection_reason": selection_reason,
+        "fallback_reason": fallback_reason,
         "detector_label": detector_label,
+        "temporal_isolation_verified": temporal_isolation_verified,
         "merkle_root": merkle_root,
         "merkle_certificate_path": str(certificate_path),
         "flows_scored": len(scored),

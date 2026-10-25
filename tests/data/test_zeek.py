@@ -76,7 +76,7 @@ def test_zeek_conn_tsv_and_null_handling(tmp_path):
     assert r2["feat_flow_duration"] == 0.0
     assert r2["fwd_bytes"] == 0
     assert r2["bwd_bytes"] == 0
-    assert r2["conn_state"] is None
+    assert r2["conn_state"] is None or pd.isna(r2["conn_state"])
 
 
 def test_zeek_conn_json_and_malformed_tolerance(tmp_path):
@@ -109,7 +109,38 @@ def test_zeek_conn_json_and_malformed_tolerance(tmp_path):
     assert r2["dst_ip"] == "10.2.2.31"
     assert r2["duration"] == 0.0
     assert r2["bwd_bytes"] == 0
-    assert r2["conn_state"] is None
+    assert r2["conn_state"] is None or pd.isna(r2["conn_state"])
+
+
+@pytest.mark.parametrize(
+    ("record", "message"),
+    [
+        (
+            {"id.orig_h": "192.0.2.1", "id.resp_h": "198.51.100.2"},
+            "missing required network metadata.*ts",
+        ),
+        (
+            {"ts": 1700000010.5, "id.resp_h": "198.51.100.2"},
+            "missing required network metadata.*id.orig_h",
+        ),
+        (
+            {"ts": 1700000010.5, "id.orig_h": "not-an-ip", "id.resp_h": "198.51.100.2"},
+            "src_ip.*missing or invalid IP",
+        ),
+        (
+            {"ts": "not-a-time", "id.orig_h": "192.0.2.1", "id.resp_h": "198.51.100.2"},
+            "missing or invalid timestamps",
+        ),
+    ],
+)
+def test_zeek_conn_rejects_missing_or_invalid_network_metadata(
+    tmp_path, record, message
+):
+    source = tmp_path / "invalid_conn.json"
+    source.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        parse_zeek_conn(source)
 
 
 def test_zeek_dns_parsing_and_sanitization(tmp_path):

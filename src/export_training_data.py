@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 
 from src.config import BASE_DIR, DATA_DIR, PROCESSED_DATA_DIR, RAW_DATA_DIR
-from src.data_loader import FlowDataLoader
+from src.data_loader import FlowDataLoader, split_temporally
 
 def compute_sha256(file_path: Path) -> str:
     """Computes SHA-256 checksum of a file for forensic evidence integrity."""
@@ -48,25 +48,11 @@ def export_benchmark_splits():
     combined_df.to_parquet(full_path, index=False)
     print(f"\n[OK] Saved Unified Benchmark Dataset: {full_path.name} ({len(combined_df):,} flows)")
     
-    # 2. Replicate Exact 60/20/20 Temporal Split per class
-    print("\n[2/3] Partitioning into 60% Train / 20% Val / 20% Test splits...")
-    if "timestamp" in combined_df.columns:
-        combined_df["timestamp"] = pd.to_datetime(combined_df["timestamp"], format="mixed", errors="coerce")
-        
-    train_dfs, val_dfs, test_dfs = [], [], []
-    for label_name, group in combined_df.groupby("label"):
-        if "timestamp" in group.columns:
-            group = group.sort_values(by="timestamp").reset_index(drop=True)
-        n = len(group)
-        train_end = int(n * 0.60)
-        val_end = int(n * 0.80)
-        train_dfs.append(group.iloc[:train_end])
-        val_dfs.append(group.iloc[train_end:val_end])
-        test_dfs.append(group.iloc[val_end:])
-        
-    train_df = pd.concat(train_dfs, ignore_index=True)
-    val_df = pd.concat(val_dfs, ignore_index=True)
-    test_df = pd.concat(test_dfs, ignore_index=True)
+    # 2. Keep each partition on a disjoint global time horizon.
+    print("\n[2/3] Partitioning chronologically into 60% Train / 20% Val / 20% Test splits...")
+    train_df, val_df, test_df = split_temporally(
+        combined_df, train_ratio=0.60, val_ratio=0.20
+    )
     
     # Save Parquet Splits
     train_path = PROCESSED_DATA_DIR / "benchmark_train_flows.parquet"

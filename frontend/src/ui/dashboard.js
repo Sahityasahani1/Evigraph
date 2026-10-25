@@ -27,11 +27,64 @@ export function incidentMatches(incident, search, level) {
   return matchesSeverity && (!query || searchable.includes(query));
 }
 
+export function mergeIncidents(existingList = [], incomingList = [], { isFresh = false } = {}) {
+  const incoming = incomingList.map(incident => ({
+    ...incident,
+    _sourceKey: incident._sourceKey || (
+      incident.inference_source === 'fresh' && incident.investigation_job_id
+        ? `fresh:${incident.investigation_job_id}:${incident.incident_id}`
+        : incident.incident_id
+    ),
+  }));
+
+  if (isFresh) {
+    const incomingJobIds = new Set(incoming.map(i => i.investigation_job_id).filter(Boolean));
+    const incomingShaModels = new Set(
+      incoming
+        .filter(i => i.source_sha256)
+        .map(i => `${i.source_sha256}:${i.detection_model || i.detector_label || ''}`)
+    );
+    const incomingIds = new Set(incoming.map(i => i.incident_id));
+
+    const preserved = existingList.filter(item => {
+      if (item.investigation_job_id && incomingJobIds.has(item.investigation_job_id)) return false;
+      if (item.inference_source === 'fresh' && item.source_sha256) {
+        const key = `${item.source_sha256}:${item.detection_model || item.detector_label || ''}`;
+        if (incomingShaModels.has(key)) return false;
+      }
+      if (item.inference_source !== 'fresh' && incomingIds.has(item.incident_id)) return false;
+      if (incoming.some(inc => inc._sourceKey === item._sourceKey)) return false;
+      return true;
+    });
+
+    return [...incoming, ...preserved];
+  }
+
+  const existingFresh = existingList.filter(item => item.inference_source === 'fresh');
+  const freshIds = new Set(existingFresh.map(i => i.incident_id));
+
+  const filteredIncoming = incoming.filter(item => !freshIds.has(item.incident_id));
+
+  const seen = new Set();
+  const result = [];
+  for (const item of [...existingFresh, ...filteredIncoming]) {
+    const key = item._sourceKey || item.incident_id;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 export function incidentCardHtml(incident, selectedId) {
   const level = severityOf(incident.score, incident.severity);
   const sourceKey = incident._sourceKey || incident.incident_id;
   const hostCount = incident.hosts?.length;
-  const status = incident.status || 'Status unavailable';
+  const isFresh = incident.inference_source === 'fresh';
+  const status = isFresh
+    ? (incident.detector_label ? `Fresh · ${incident.detector_label.toUpperCase()}` : 'Fresh inference')
+    : (incident.status || 'Status unavailable');
   return `<button class="incident-item ${sourceKey === selectedId ? 'selected' : ''}" type="button" data-incident="${esc(sourceKey)}" aria-current="${sourceKey === selectedId ? 'true' : 'false'}">
     <span class="incident-item-top"><span class="severity-dot severity-${level}"></span><strong>${esc(incident.incident_id)}</strong><span class="severity-label severity-text-${level}">${level}</span></span>
     <span class="incident-item-meta">${esc(status)}<span>${hostCount == null ? 'Hosts unavailable' : `${hostCount} hosts`}</span></span>
@@ -57,6 +110,7 @@ export function overviewHtml(incident, sourceLabel) {
       <div class="overview-titleline"><span class="severity-pill severity-bg-${level}">${level}</span><span class="source-pill">${esc(sourceLabel)}</span><span class="status-pill"><i></i>${esc(status)}</span></div>
       <h2>${esc(incident.incident_id)} <span class="overview-subtitle">Investigation</span></h2>
       <p class="overview-summary">${summary ? esc(summary) : 'No incident summary was provided by the API.'}</p>
+      ${incident.selection_reason ? `<div class="overview-selection-info"><strong>Detector:</strong> ${esc(incident.detector_label || incident.detection_model || '')} · <em>${esc(incident.selection_reason)}</em>${incident.fallback_reason ? ` (Fallback: ${esc(incident.fallback_reason)})` : ''}</div>` : ''}
     </div>
     <div class="overview-confidence"><span class="eyebrow">CONFIDENCE / SCORE</span><strong>${esc(confidence)}</strong><span>${numeric(incident.score) ? `${Number(incident.score).toFixed(2)} normalized score` : 'No confidence or score returned'}</span></div>
   </div>
@@ -155,7 +209,7 @@ export function evidenceHtml(incident, stage, evidence, retrieved, sourceLabel) 
     ['Input SHA-256', display.source_sha256 || display.pcap_sha256 || incident.source_sha256],
     ['Merkle leaf hash', retrieved?.merkle_leaf_hash || display.merkle_leaf_hash || display.sha256],
     ['Merkle root', retrieved?.merkle_root || incident.merkle_root],
-    ['Merkle proof', (retrieved?.merkle_verified ?? display.merkle_verified) ? 'Verified inclusion proof available' : undefined],
+    ['Merkle verification', (retrieved?.merkle_verified ?? display.merkle_verified) === true ? 'Verified (RFC 6962 inclusion proof valid)' : (retrieved?.merkle_verified ?? display.merkle_verified) === false ? 'Unverified / No inclusion proof' : ((retrieved?.merkle_leaf_hash || display.merkle_leaf_hash) ? 'Verified inclusion proof available' : undefined)],
     ['Detector class', stage.behavior],
     ['Alert details', stage.summary],
   ];
@@ -256,7 +310,7 @@ export function reportHtml(report, reportStatus, incident) {
   ${summary ? `<div class="report-summary"><span class="eyebrow">SUMMARY</span><p>${esc(summary)}</p></div>` : ''}
   <div class="report-claims">${claims || '<div class="empty-state compact-empty">The report returned no evidence-linked claims.</div>'}</div>
   ${rejectedClaims ? `<div class="rejected-claims"><strong>Unsupported claims returned by backend</strong><ul>${rejectedClaims}</ul></div>` : ''}
-  <div class="report-provenance"><span>Input fingerprint</span><code>${esc(report.footer?.input_sha256 || incident.source_sha256 || 'Not provided')}</code><span>Merkle root</span><code>${esc(report.footer?.merkle_root || incident.merkle_root || 'Not provided')}</code><span>ATT&amp;CK version</span><code>${esc(report.footer?.attack_version || 'Not provided')}</code></div>`;
+  <div class="report-provenance"><span>Input fingerprint</span><code>${esc(report.footer?.input_sha256 || incident.source_sha256 || 'Not provided')}</code><span>Merkle root</span><code>${esc(report.footer?.merkle_root || incident.merkle_root || 'Not provided')}</code><span>Merkle verification</span><code>${esc((report.footer?.merkle_root || incident.merkle_root) ? 'Verified (RFC 6962 tree)' : 'Not verified')}</code><span>ATT&amp;CK version</span><code>${esc(report.footer?.attack_version || 'Not provided')}</code></div>`;
 }
 
 export function formatDateTime(value) {

@@ -123,6 +123,10 @@ The pipeline auto-detects the format and routes to the dedicated streaming parse
   $$\text{flow\_id} = \text{"flw\_"} + \text{sha256}(\text{evidence\_sha256} \mid \text{src\_ip} \mid \text{src\_port} \mid \text{dst\_ip} \mid \text{dst\_port} \mid \text{protocol} \mid \text{ts\_start\_ns} \mid \text{occurrence\_idx})[:16]$$
 - **Feature Isolation**: Host-level graph metrics (`in_degree`, `out_degree`, `fan_out`, `total_bytes`) are isolated into `data/processed/host_features.parquet` and are **strictly excluded** from flow tables.
 
+### Step 3.5: Leakage-Safe Dataset Partitioning
+- Training, validation, and test partitions are split by one global timestamp order, not independently per attack label. Therefore, the latest training timestamp precedes validation, and the latest validation timestamp precedes testing.
+- The loader and benchmark exporter use this global chronology by default. Per-class chronological splitting is an explicit compatibility option only; it does not guarantee disjoint global time horizons.
+
 ### Step 4: Storage & Analytical Cataloging
 - **Parquet Storage (`data/storage.py`)**:
   - Writes Snappy-compressed, columnar Parquet tables to `data/processed/`.

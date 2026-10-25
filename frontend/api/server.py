@@ -33,7 +33,7 @@ INVESTIGATION_ROOT = Path(os.environ.get(
 ))
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 _investigation_jobs: dict[str, dict] = {}
-_job_lock = threading.Lock()
+_job_lock = threading.RLock()
 _job_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="evigraph-investigation")
 
 PRIVATE_NETWORKS = [ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
@@ -477,6 +477,68 @@ def _update_investigation_job(job_id: str, **updates) -> None:
             job.update(updates)
 
 
+def _group_fallback_stages(stages: list[dict]) -> list[dict]:
+    """Group sequential/compatible incident stages by (src, dst, behavior, tactic).
+
+    Generates a concise statement per legitimate group while preserving
+    the relevant stage IDs and all corresponding valid evidence flow IDs.
+    """
+    if not stages:
+        return []
+
+    groups = []
+    group_map: dict[tuple, dict] = {}
+
+    for stage in stages:
+        src = stage.get("src")
+        dst = stage.get("dst")
+        behavior = stage.get("behavior") or stage.get("summary") or "Unknown"
+        tactic = stage.get("tactic") or "Unknown"
+        key = (src, dst, behavior, tactic)
+
+        if key not in group_map:
+            group_entry = {
+                "src": src,
+                "dst": dst,
+                "behavior": behavior,
+                "tactic": tactic,
+                "summary": stage.get("summary"),
+                "stage_id": stage.get("stage_id"),
+                "stage_ids": [],
+                "evidence_ids": [],
+            }
+            group_map[key] = group_entry
+            groups.append(group_entry)
+
+        entry = group_map[key]
+        sid = stage.get("stage_id")
+        if sid and sid not in entry["stage_ids"]:
+            entry["stage_ids"].append(sid)
+
+        for item in stage.get("evidence", []):
+            fid = item.get("flow_id")
+            if fid and fid not in entry["evidence_ids"]:
+                entry["evidence_ids"].append(fid)
+
+    sentences = []
+    for g in groups:
+        count = len(g["evidence_ids"])
+        b = g["behavior"] if g["behavior"] != "Unknown" else "Suspicious"
+        s = g["src"]
+        d = g["dst"]
+        if count > 1:
+            text = f"Observed {count} flows of {b} activity from {s} to {d}."
+        else:
+            text = f"{g['summary'] or (b + ' activity')} from {s} to {d}."
+        sentences.append({
+            "text": text,
+            "stage_id": g["stage_id"],
+            "stage_ids": g["stage_ids"],
+            "evidence_ids": g["evidence_ids"],
+        })
+    return sentences
+
+
 def _validate_fallback_citations(sentences: list[dict], incident: dict, normalized: dict, flow_store) -> dict:
     incident_flow_ids = set(incident.get("evidence_flow_ids", []))
     incident_flow_ids.update(
@@ -487,15 +549,16 @@ def _validate_fallback_citations(sentences: list[dict], incident: dict, normaliz
     stages = {stage["stage_id"]: stage for stage in normalized.get("stages", [])}
     valid = 0
     for sentence in sentences:
-        stage = stages.get(sentence.get("stage_id"))
+        stage_ids = sentence.get("stage_ids") or ([sentence["stage_id"]] if sentence.get("stage_id") else [])
         citations = set(sentence.get("evidence_ids", []))
         stage_flow_ids = {
             evidence.get("flow_id")
-            for evidence in (stage or {}).get("evidence", [])
+            for sid in stage_ids
+            for evidence in (stages.get(sid) or {}).get("evidence", [])
             if evidence.get("flow_id")
         }
         if (
-            stage is not None
+            stage_ids
             and citations
             and citations <= stage_flow_ids
             and citations <= incident_flow_ids
@@ -552,11 +615,7 @@ def _run_investigation_job(job_id: str, input_path: Path, output_dir: Path, mode
                 validation = None
                 if not sentences:
                     normalized = normalize_incident(incident_case)
-                    sentences = [{
-                        "text": f"{stage['summary']} from {stage['src']} to {stage['dst']}.",
-                        "stage_id": stage["stage_id"],
-                        "evidence_ids": [item["flow_id"] for item in stage["evidence"]],
-                    } for stage in normalized["stages"]]
+                    sentences = _group_fallback_stages(normalized["stages"])
                     fallback_validation = _validate_fallback_citations(
                         sentences, incident_case, normalized, agent.tools.store
                     )
@@ -608,6 +667,20 @@ def _run_investigation_job(job_id: str, input_path: Path, output_dir: Path, mode
                     job_id, stage=f"Generated report {index}/{len(incident_ids)}", progress=report_progress
                 )
 
+        selected_detector = result.get("selected_detector", result.get("model_type"))
+        detector_label = result.get("detector_label", selected_detector)
+        selection_reason = result.get("selection_reason")
+        fallback_reason = result.get("fallback_reason")
+        requested_detector = result.get("requested_detector", model_type)
+        with _job_lock:
+            if job_id in _investigation_jobs:
+                _investigation_jobs[job_id]["selected_detector"] = selected_detector
+                _investigation_jobs[job_id]["model_type"] = selected_detector
+                _investigation_jobs[job_id]["detector_label"] = detector_label
+                _investigation_jobs[job_id]["selection_reason"] = selection_reason
+                _investigation_jobs[job_id]["fallback_reason"] = fallback_reason
+                _investigation_jobs[job_id]["requested_detector"] = requested_detector
+
         _update_investigation_job(
             job_id,
             status="completed",
@@ -618,6 +691,11 @@ def _run_investigation_job(job_id: str, input_path: Path, output_dir: Path, mode
                 "incident_ids": incident_ids,
                 "report_count": len(incident_ids),
                 "inference_source": "fresh",
+                "selected_detector": selected_detector,
+                "detector_label": detector_label,
+                "selection_reason": selection_reason,
+                "fallback_reason": fallback_reason,
+                "requested_detector": requested_detector,
             },
             error=None,
         )
@@ -648,9 +726,14 @@ async def create_investigation(request: Request):
                 raise HTTPException(status_code=413, detail="Input exceeds the 2 GiB upload limit.")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid Content-Length header.") from exc
-    model_type = request.headers.get("x-detector", "xgb").strip().lower()
-    if model_type not in {"xgb", "gnn"}:
-        raise HTTPException(status_code=422, detail="Detector must be either 'xgb' or 'gnn'.")
+    raw_detector = request.headers.get("x-detector")
+    if not raw_detector or raw_detector.strip().lower() in {"", "undefined", "null"}:
+        model_type = "auto"
+    else:
+        model_type = raw_detector.strip().lower()
+
+    if model_type not in {"auto", "xgb", "gnn"}:
+        raise HTTPException(status_code=422, detail="Detector must be 'auto', 'xgb', or 'gnn'.")
 
     job_id = uuid.uuid4().hex
     output_dir = INVESTIGATION_ROOT / job_id
@@ -678,6 +761,7 @@ async def create_investigation(request: Request):
         "progress": 0,
         "filename": filename,
         "model_type": model_type,
+        "requested_detector": model_type,
         "created_at": datetime.now().astimezone().isoformat(),
         "error": None,
     }
@@ -687,21 +771,60 @@ async def create_investigation(request: Request):
     return dict(job)
 
 
-@app.get("/investigations/{job_id}")
-def get_investigation(job_id: str):
+def _get_or_restore_job(job_id: str) -> dict:
     with _job_lock:
         job = _investigation_jobs.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Investigation job not found.")
-        return dict(job)
+        if job is not None:
+            return job
+        output_dir = INVESTIGATION_ROOT / job_id
+        cases_file = output_dir / "incident_cases.json"
+        if cases_file.is_file():
+            try:
+                cases = json.loads(cases_file.read_text(encoding="utf-8"))
+                prov = cases.get("provenance", {})
+                job = {
+                    "job_id": job_id,
+                    "status": "completed",
+                    "stage": "Investigation complete",
+                    "progress": 100,
+                    "filename": prov.get("input_filename", "flows.csv"),
+                    "model_type": prov.get("selected_detector", "xgb"),
+                    "requested_detector": prov.get("requested_detector", "auto"),
+                    "selected_detector": prov.get("selected_detector", "xgb"),
+                    "detector_label": prov.get("detector_label", "xgb"),
+                    "selection_reason": prov.get("selection_reason"),
+                    "fallback_reason": prov.get("fallback_reason"),
+                    "result": {
+                        "flows_scored": prov.get("flows_scored"),
+                        "alerts": prov.get("alerts"),
+                        "incident_count": len(cases.get("incidents", [])),
+                        "selected_detector": prov.get("selected_detector", "xgb"),
+                        "detector_label": prov.get("detector_label", "xgb"),
+                        "selection_reason": prov.get("selection_reason"),
+                        "fallback_reason": prov.get("fallback_reason"),
+                        "requested_detector": prov.get("requested_detector", "auto"),
+                    },
+                }
+                _investigation_jobs[job_id] = job
+                return job
+            except Exception:
+                pass
+    return None
+
+
+@app.get("/investigations/{job_id}")
+def get_investigation(job_id: str):
+    job = _get_or_restore_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Investigation job not found.")
+    return dict(job)
 
 
 def _completed_job(job_id: str) -> tuple[dict, dict]:
-    with _job_lock:
-        job = _investigation_jobs.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Investigation job not found.")
-        snapshot = dict(job)
+    job = _get_or_restore_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Investigation job not found.")
+    snapshot = dict(job)
     if snapshot["status"] != "completed":
         raise HTTPException(
             status_code=409,
@@ -713,7 +836,13 @@ def _completed_job(job_id: str) -> tuple[dict, dict]:
             },
         )
     output_dir = INVESTIGATION_ROOT / job_id
-    cases = json.loads((output_dir / "incident_cases.json").read_text(encoding="utf-8"))
+    cases_file = output_dir / "incident_cases.json"
+    if not cases_file.is_file():
+        raise HTTPException(status_code=404, detail="Investigation output is missing incident cases.")
+    try:
+        cases = json.loads(cases_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to parse incident cases: {exc}")
     return snapshot, cases
 
 
@@ -726,8 +855,11 @@ def get_investigation_incidents(job_id: str):
         normalized.update({
             "inference_source": "fresh",
             "source_sha256": cases.get("provenance", {}).get("input_sha256"),
-            "detection_model": job["model_type"],
-            "detector_label": (job.get("result") or {}).get("detector_label", job["model_type"]),
+            "detection_model": (job.get("result") or {}).get("selected_detector", job.get("selected_detector", job["model_type"])),
+            "detector_label": (job.get("result") or {}).get("detector_label", job.get("detector_label", job["model_type"])),
+            "requested_detector": (job.get("result") or {}).get("requested_detector", job.get("requested_detector")),
+            "selection_reason": (job.get("result") or {}).get("selection_reason") or job.get("selection_reason") or cases.get("provenance", {}).get("selection_reason", ""),
+            "fallback_reason": (job.get("result") or {}).get("fallback_reason") or job.get("fallback_reason") or cases.get("provenance", {}).get("fallback_reason"),
             "merkle_root": cases.get("merkle_root"),
             "investigation_job_id": job_id,
         })

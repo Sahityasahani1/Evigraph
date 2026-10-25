@@ -144,6 +144,7 @@ def test_canonicalize_populates_feat_columns():
         "src_port": 100,
         "dst_port": 80,
         "protocol": 6,
+        "timestamp": "2026-10-18T10:00:00Z",
         "flow_duration": 150000.0,
         "tot_len_fwd_pkts": 500.0,
         "tot_len_bwd_pkts": 1200.0
@@ -155,6 +156,84 @@ def test_canonicalize_populates_feat_columns():
     assert clean["feat_flow_duration"].iloc[0] == 150000.0
     assert clean["feat_tot_len_fwd_pkts"].iloc[0] == 500.0
     assert len([c for c in clean.columns if c.startswith("feat_")]) == 35
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"src_ip": None}, "src_ip.*missing or invalid IP"),
+        ({"dst_ip": "not-an-ip"}, "dst_ip.*missing or invalid IP"),
+        ({"timestamp": None}, "timestamp.*missing or invalid timestamps"),
+        ({"timestamp": "not-a-timestamp"}, "timestamp.*missing or invalid timestamps"),
+        ({"src_ip": None, "timestamp": None}, "src_ip.*missing or invalid IP"),
+    ],
+)
+def test_canonicalize_rejects_missing_or_invalid_network_metadata(overrides, message):
+    row = {
+        "flow_id": "flw_0123456789abcdef",
+        "evidence_id": "ev_0123456789ab",
+        "src_ip": "192.0.2.1",
+        "dst_ip": "198.51.100.2",
+        "src_port": 50000,
+        "dst_port": 443,
+        "protocol": 6,
+        "timestamp": "2026-10-18T10:00:00Z",
+        "flow_duration": 1_000_000,
+    }
+    row.update(overrides)
+
+    with pytest.raises(ValueError, match=message):
+        canonicalize(pd.DataFrame([row]))
+
+
+@pytest.mark.parametrize(
+    ("missing_column", "message"),
+    [
+        ("src_ip", "Missing required network metadata column 'src_ip'"),
+        ("dst_ip", "Missing required network metadata column 'dst_ip'"),
+        ("timestamp", "Missing required flow timestamp column"),
+    ],
+)
+def test_canonicalize_rejects_absent_network_metadata_columns(missing_column, message):
+    row = {
+        "flow_id": "flw_0123456789abcdef",
+        "evidence_id": "ev_0123456789ab",
+        "src_ip": "192.0.2.1",
+        "dst_ip": "198.51.100.2",
+        "src_port": 50000,
+        "dst_port": 443,
+        "protocol": 6,
+        "timestamp": "2026-10-18T10:00:00Z",
+        "flow_duration": 1_000_000,
+    }
+    del row[missing_column]
+
+    with pytest.raises(ValueError, match=message):
+        canonicalize(pd.DataFrame([row]))
+
+
+def test_canonicalize_accepts_valid_ipv4_ipv6_and_timestamp():
+    df = pd.DataFrame(
+        [
+            {
+                "flow_id": "flw_ipv4",
+                "evidence_id": "ev_capture",
+                "src_ip": "192.0.2.1",
+                "dst_ip": "2001:db8::1",
+                "src_port": 50000,
+                "dst_port": 443,
+                "protocol": 6,
+                "timestamp": "2026-10-18T10:00:00Z",
+                "flow_duration": 1_000_000,
+            }
+        ]
+    )
+
+    clean = canonicalize(df)
+    assert validate(clean)
+    assert clean.loc[0, "src_ip"] == "192.0.2.1"
+    assert clean.loc[0, "dst_ip"] == "2001:db8::1"
+    assert clean.loc[0, "ts_start"] == pd.Timestamp("2026-10-18T10:00:00Z")
 
 
 @given(

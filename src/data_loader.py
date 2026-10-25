@@ -12,6 +12,53 @@ from pathlib import Path
 from typing import Tuple, List, Optional
 from src.config import METADATA_COLS, SAMPLES_DATA_DIR, LABEL_MAPPING
 
+
+def split_temporally(
+    df: pd.DataFrame,
+    train_ratio: float = 0.60,
+    val_ratio: float = 0.20,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Split rows by global timestamp order; if no timestamp exists, preserve input order."""
+    if not 0.0 <= train_ratio <= 1.0 or not 0.0 <= val_ratio <= 1.0:
+        raise ValueError("train_ratio and val_ratio must be between 0 and 1.")
+    if train_ratio + val_ratio > 1.0:
+        raise ValueError("train_ratio + val_ratio must not exceed 1.")
+
+    ordered = df.copy()
+    if "timestamp" in ordered.columns:
+        ordered["timestamp"] = pd.to_datetime(
+            ordered["timestamp"], format="mixed", errors="coerce"
+        )
+        if ordered["timestamp"].isna().any():
+            raise ValueError("Global temporal splitting requires a valid timestamp for every row.")
+        ordered = ordered.sort_values(by="timestamp", kind="stable").reset_index(drop=True)
+
+        group_ends = (
+            ordered["timestamp"].ne(ordered["timestamp"].shift(-1)).to_numpy().nonzero()[0] + 1
+        )
+        valid_ends = group_ends[(group_ends > 0) & (group_ends < len(ordered))]
+        if len(valid_ends) < 2:
+            raise ValueError(
+                "Global temporal splitting requires at least three distinct timestamps "
+                "to keep train, validation, and test time ranges disjoint."
+            )
+        train_candidates = valid_ends[:-1]
+        train_target = int(len(ordered) * train_ratio)
+        train_end = int(train_candidates[np.abs(train_candidates - train_target).argmin()])
+        val_candidates = valid_ends[valid_ends > train_end]
+        val_target = int(len(ordered) * (train_ratio + val_ratio))
+        val_end = int(val_candidates[np.abs(val_candidates - val_target).argmin()])
+    else:
+        train_end = int(len(ordered) * train_ratio)
+        val_end = int(len(ordered) * (train_ratio + val_ratio))
+
+    return (
+        ordered.iloc[:train_end].copy(),
+        ordered.iloc[train_end:val_end].copy(),
+        ordered.iloc[val_end:].copy(),
+    )
+
+
 # Canonical column mapping: maps CICFlowMeter verbose / title-cased names to lowercase snake_case
 COLUMN_CANONICAL_MAP = {
     "Flow ID": "flow_id",
@@ -143,18 +190,20 @@ class FlowDataLoader:
         df: pd.DataFrame, 
         train_ratio: float = 0.60,
         val_ratio: float = 0.20,
-        per_class: bool = True
+        per_class: bool = False
     ):
         """
         Sorts chronologically and splits into Train/Val/Test temporally (TRD Sec 3.3.5).
-        When per_class=True, splits chronologically within each attack class,
-        guaranteeing zero future-to-past leakage while preserving multi-class representation.
+        The default split uses global chronological boundaries. Per-class splitting is an
+        explicit opt-in for callers that accept overlapping time ranges between partitions.
         Returns: (X_train, y_train, meta_train, X_val, y_val, meta_val, X_test, y_test, meta_test)
         """
-        if "timestamp" in df.columns:
-            df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed", errors="coerce")
-            
         if per_class and "label" in df.columns:
+            df = df.copy()
+            if "timestamp" in df.columns:
+                df["timestamp"] = pd.to_datetime(
+                    df["timestamp"], format="mixed", errors="coerce"
+                )
             train_dfs, val_dfs, test_dfs = [], [], []
             for label_name, group in df.groupby("label"):
                 if "timestamp" in group.columns:
@@ -170,14 +219,7 @@ class FlowDataLoader:
             val_df = pd.concat(val_dfs, ignore_index=True)
             test_df = pd.concat(test_dfs, ignore_index=True)
         else:
-            if "timestamp" in df.columns:
-                df = df.sort_values(by="timestamp").reset_index(drop=True)
-            n = len(df)
-            train_end = int(n * train_ratio)
-            val_end = int(n * (train_ratio + val_ratio))
-            train_df = df.iloc[:train_end].copy()
-            val_df = df.iloc[train_end:val_end].copy()
-            test_df = df.iloc[val_end:].copy()
+            train_df, val_df, test_df = split_temporally(df, train_ratio, val_ratio)
 
         # Identify numerical features (excluding metadata) using robust pandas type check
         self.feature_columns = [

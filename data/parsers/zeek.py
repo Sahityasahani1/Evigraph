@@ -268,6 +268,14 @@ def parse_zeek_conn(
 
     raw_df = pd.DataFrame(records)
 
+    required_metadata = ("ts", "id.orig_h", "id.resp_h")
+    missing_metadata = [column for column in required_metadata if column not in raw_df.columns]
+    if missing_metadata:
+        raise ValueError(
+            "Zeek conn.log is missing required network metadata field(s): "
+            f"{missing_metadata}."
+        )
+
     df = pd.DataFrame(index=raw_df.index)
     df["evidence_id"] = ev_id
     df["source_type"] = "zeek"
@@ -276,44 +284,49 @@ def parse_zeek_conn(
     df["zeek_uid"] = raw_df["uid"].astype(str) if "uid" in raw_df.columns else None
 
     # IP addresses & ports
-    df["src_ip"] = raw_df["id.orig_h"].fillna("0.0.0.0").astype(str) if "id.orig_h" in raw_df.columns else "0.0.0.0"
-    df["dst_ip"] = raw_df["id.resp_h"].fillna("0.0.0.0").astype(str) if "id.resp_h" in raw_df.columns else "0.0.0.0"
+    df["src_ip"] = raw_df["id.orig_h"]
+    df["dst_ip"] = raw_df["id.resp_h"]
 
-    src_p = pd.to_numeric(raw_df.get("id.orig_p", 0), errors="coerce").fillna(0).astype("int32")
-    dst_p = pd.to_numeric(raw_df.get("id.resp_p", 0), errors="coerce").fillna(0).astype("int32")
+    src_p_raw = raw_df["id.orig_p"] if "id.orig_p" in raw_df.columns else pd.Series(0, index=raw_df.index)
+    dst_p_raw = raw_df["id.resp_p"] if "id.resp_p" in raw_df.columns else pd.Series(0, index=raw_df.index)
+    src_p = pd.to_numeric(src_p_raw, errors="coerce").fillna(0).astype("int32")
+    dst_p = pd.to_numeric(dst_p_raw, errors="coerce").fillna(0).astype("int32")
     df["src_port"] = np.clip(src_p, 0, 65535)
     df["dst_port"] = np.clip(dst_p, 0, 65535)
 
     # Protocol
-    proto_str = raw_df.get("proto", "tcp").fillna("tcp").astype(str).str.upper()
+    proto_raw = raw_df["proto"] if "proto" in raw_df.columns else pd.Series("tcp", index=raw_df.index)
+    proto_str = proto_raw.fillna("tcp").astype(str).str.upper()
     df["protocol"] = proto_str.map(lambda p: PROTOCOL_MAP.get(p, 6)).fillna(6).astype("int16")
     df["proto_name"] = df["protocol"].map(lambda p: PROTO_NAME_MAP.get(int(p), f"PROTO_{p}")).astype(str)
 
     # Timestamps (Zeek epoch floats -> UTC datetime)
-    if "ts" in raw_df.columns:
-        ts_numeric = pd.to_numeric(raw_df["ts"], errors="coerce").fillna(0.0)
-        df["ts_start"] = pd.to_datetime(ts_numeric, unit="s", utc=True)
-    else:
-        df["ts_start"] = pd.to_datetime("2026-10-18T00:00:00Z", utc=True)
+    ts_numeric = pd.to_numeric(raw_df["ts"], errors="coerce")
+    df["ts_start"] = pd.to_datetime(ts_numeric, unit="s", utc=True, errors="coerce")
 
     # Duration: Zeek records duration in SECONDS
-    duration_s = pd.to_numeric(raw_df.get("duration", 0.0), errors="coerce").fillna(0.0)
+    duration_raw = raw_df["duration"] if "duration" in raw_df.columns else pd.Series(0.0, index=raw_df.index)
+    duration_s = pd.to_numeric(duration_raw, errors="coerce").fillna(0.0)
     duration_s = np.maximum(0.0, duration_s)
     df["duration"] = duration_s.astype("float64")
     df["feat_flow_duration"] = (duration_s * 1e6).astype("float32")  # Microseconds for model features
     df["ts_end"] = df["ts_start"] + pd.to_timedelta(df["duration"], unit="s")
 
     # Byte volumes
-    orig_b = pd.to_numeric(raw_df.get("orig_bytes", 0), errors="coerce").fillna(0)
-    resp_b = pd.to_numeric(raw_df.get("resp_bytes", 0), errors="coerce").fillna(0)
+    orig_bytes_raw = raw_df["orig_bytes"] if "orig_bytes" in raw_df.columns else pd.Series(0, index=raw_df.index)
+    resp_bytes_raw = raw_df["resp_bytes"] if "resp_bytes" in raw_df.columns else pd.Series(0, index=raw_df.index)
+    orig_b = pd.to_numeric(orig_bytes_raw, errors="coerce").fillna(0)
+    resp_b = pd.to_numeric(resp_bytes_raw, errors="coerce").fillna(0)
     df["fwd_bytes"] = np.maximum(0, orig_b).astype("int64")
     df["bwd_bytes"] = np.maximum(0, resp_b).astype("int64")
     df["tot_len_fwd_pkts"] = df["fwd_bytes"].astype("float32")
     df["tot_len_bwd_pkts"] = df["bwd_bytes"].astype("float32")
 
     # Packet counts
-    orig_pkts = pd.to_numeric(raw_df.get("orig_pkts", 0), errors="coerce").fillna(0)
-    resp_pkts = pd.to_numeric(raw_df.get("resp_pkts", 0), errors="coerce").fillna(0)
+    orig_pkts_raw = raw_df["orig_pkts"] if "orig_pkts" in raw_df.columns else pd.Series(0, index=raw_df.index)
+    resp_pkts_raw = raw_df["resp_pkts"] if "resp_pkts" in raw_df.columns else pd.Series(0, index=raw_df.index)
+    orig_pkts = pd.to_numeric(orig_pkts_raw, errors="coerce").fillna(0)
+    resp_pkts = pd.to_numeric(resp_pkts_raw, errors="coerce").fillna(0)
     df["fwd_pkts"] = np.maximum(0, orig_pkts).astype("int64")
     df["bwd_pkts"] = np.maximum(0, resp_pkts).astype("int64")
     df["tot_fwd_pkts"] = df["fwd_pkts"].astype("float32")

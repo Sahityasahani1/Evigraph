@@ -335,3 +335,65 @@ select { padding: 5px 26px 5px 9px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+.selected-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 0;
+  max-width: 280px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong, #3b4c59);
+  border-radius: 6px;
+  background: var(--surface, #18222c);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.selected-file-info[hidden] {
+  display: none;
+}
+
+#selectedFileName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--text, #e6edf2);
+}
+
+#selectedFileSize {
+  color: var(--muted, #9ca8b5);
+  white-space: nowrap;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#clearSelectedFile {
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  min-height: auto;
+  border: 1px solid var(--border-strong, #3b4c59);
+  border-radius: 5px;
+  background: var(--surface-raised, #1d2934);
+  color: var(--text, #e6edf2);
+  font-size: 11px;
+}
+
+#clearSelectedFile:hover {
+  border-color: var(--accent-strong, #2da6b8);
+}
+
+.overview-selection-info {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted, #9ca8b5);
+}
+
+.overview-selection-info strong {
+  color: var(--text, #e6edf2);
+}

@@ -25,6 +25,7 @@ from data.parsers import (
     parse_pcap,
     run_skew_validation,
 )
+from data.parsers.pcap import FlowState
 
 
 def create_synthetic_pcap(file_path, packets):
@@ -160,6 +161,20 @@ def test_pcap_flow_builder_35_features(tmp_path):
     assert last_audit.action == "PARSE_PCAP_STREAM"
     assert "dpkt" in last_audit.tool_versions
     assert "scipy" in last_audit.tool_versions
+
+
+def test_pcap_standard_deviations_use_sample_formula():
+    flow = FlowState(0.0, "192.0.2.1", "198.51.100.1", 12345, 443, 6)
+    flow.add_packet(0.0, 100, 0, 0, is_forward=True)
+    flow.add_packet(0.1, 50, 0, 0, is_forward=False)
+    flow.add_packet(0.3, 200, 0, 0, is_forward=True)
+    flow.add_packet(0.6, 80, 0, 0, is_forward=False)
+
+    features = flow.compute_features()
+
+    assert features["fwd_pkt_len_std"] == pytest.approx(70.710678, rel=1e-6)
+    assert features["bwd_pkt_len_std"] == pytest.approx(21.213203, rel=1e-6)
+    assert features["flow_iat_std"] == pytest.approx(100_000.0, rel=1e-6)
 
 
 def test_pcap_idle_timeout_segmentation(tmp_path):
