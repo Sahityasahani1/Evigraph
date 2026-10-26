@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger('evigraph.server')
 import hashlib
 import json
 import os
@@ -988,6 +990,219 @@ def get_incident(incident_id: str):
     raise HTTPException(status_code=404, detail="Incident not found")
 
 
+@app.get("/incidents/{incident_id}/countermeasures")
+def get_incident_countermeasures(incident_id: str):
+    case_incident = None
+    target_file = DATA_FILE if DATA_FILE.exists() else FALLBACK_DATA_FILE
+
+    # 1. Check primary incident cases file
+    try:
+        data = load_cases()
+        for inc in data.get("incidents", []):
+            if inc.get("incident_id") == incident_id:
+                case_incident = inc
+                break
+    except Exception as exc:
+        logger.warning(f"Unable to read incident cases from {target_file}: {exc}")
+
+    # 2. Check fresh investigation jobs if not in primary cases
+    if not case_incident and INVESTIGATION_ROOT.exists():
+        try:
+            for job_dir in INVESTIGATION_ROOT.iterdir():
+                if job_dir.is_dir():
+                    jcases_file = job_dir / "incident_cases.json"
+                    if jcases_file.is_file():
+                        try:
+                            jcases = json.loads(jcases_file.read_text(encoding="utf-8"))
+                            for inc in jcases.get("incidents", []):
+                                if inc.get("incident_id") == incident_id:
+                                    case_incident = inc
+                                    target_file = jcases_file
+                                    break
+                        except Exception:
+                            pass
+                if case_incident:
+                    break
+        except Exception as exc:
+            logger.warning(f"Error inspecting investigation jobs for {incident_id}: {exc}")
+
+    # 3. Check mock or real agent incident data if not found in stored cases
+    if not case_incident:
+        if _agent_mode() == "real":
+            try:
+                agent = _load_real_agent()
+                summary = agent.tools.get_incident(incident_id)
+                if not summary.get("error"):
+                    norm = normalize_agent_incident(summary)
+                    case_incident = {
+                        "incident_id": incident_id,
+                        "suspected_entry_point": norm["stages"][0]["src"] if norm.get("stages") else None,
+                        "incident_score": norm.get("score", 0.8),
+                        "attack_classes": norm.get("attack_classes", []),
+                        "causal_provenance": {
+                            "primary_attack_chain": [
+                                {
+                                    "source": s["src"],
+                                    "target": s["dst"],
+                                    "dst_port": int(s.get("port") or 80),
+                                    "protocol": 6,
+                                    "attack_stage": s.get("behavior", s.get("tactic", "Breach")),
+                                    "flow_id": s.get("evidence", [{}])[0].get("flow_id", "") if s.get("evidence") else "",
+                                }
+                                for s in norm.get("stages", [])
+                            ]
+                        },
+                        "subgraph": {
+                            "nodes": [{"id": h["ip"], "in_degree": 1, "out_degree": 1} for h in norm.get("hosts", [])],
+                            "edges": [
+                                {
+                                    "source": s["src"],
+                                    "target": s["dst"],
+                                    "dst_port": int(s.get("port") or 80),
+                                    "protocol": 6,
+                                }
+                                for s in norm.get("stages", [])
+                            ]
+                        }
+                    }
+            except Exception as exc:
+                logger.debug(f"Real agent lookup skipped for {incident_id}: {exc}")
+        else:
+            try:
+                mock_agent = mock_load_agent()
+                mdata = mock_investigate(mock_agent, incident_id)
+                if not mdata.get("error"):
+                    norm = normalize_mock_incident(mdata)
+                    case_incident = {
+                        "incident_id": incident_id,
+                        "suspected_entry_point": norm["stages"][0]["src"] if norm.get("stages") else None,
+                        "incident_score": norm.get("score", 0.8),
+                        "attack_classes": norm.get("attack_classes", []),
+                        "causal_provenance": {
+                            "primary_attack_chain": [
+                                {
+                                    "source": s["src"],
+                                    "target": s["dst"],
+                                    "dst_port": int(s.get("port") or 80),
+                                    "protocol": 6,
+                                    "attack_stage": s.get("behavior", s.get("tactic", "Breach")),
+                                    "flow_id": s.get("evidence", [{}])[0].get("flow_id", "") if s.get("evidence") else "",
+                                }
+                                for s in norm.get("stages", [])
+                            ]
+                        },
+                        "subgraph": {
+                            "nodes": [{"id": h["ip"], "in_degree": 1, "out_degree": 1} for h in norm.get("hosts", [])],
+                            "edges": [
+                                {
+                                    "source": s["src"],
+                                    "target": s["dst"],
+                                    "dst_port": int(s.get("port") or 80),
+                                    "protocol": 6,
+                                }
+                                for s in norm.get("stages", [])
+                            ]
+                        }
+                    }
+            except Exception as exc:
+                logger.debug(f"Mock agent lookup skipped for {incident_id}: {exc}")
+
+    if not case_incident:
+        logger.info(f"Countermeasure request rejected: incident '{incident_id}' not found across any source")
+        raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found")
+
+    try:
+        from src.mitigation.countermeasure_engine import CountermeasureEngine
+        engine = CountermeasureEngine(target_file if target_file.exists() else None)
+        plan = engine.plan_incident_countermeasures(case_incident)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Countermeasure synthesis failed: {exc}") from exc
+
+    actions = []
+    for act in plan.get("actions", []):
+        rule_id = act.get("rule_id", "")
+        attacker = act.get("target_attacker", "")
+        victim = act.get("target_victim", "")
+        port = act.get("destination_port", 0)
+        proto = act.get("protocol", "TCP").lower()
+
+        actions.append({
+            **act,
+            "verification_guidance": {
+                "linux_iptables": f"iptables -C INPUT -s {attacker} -d {victim} -p {proto} --dport {port} -j DROP 2>/dev/null",
+                "windows_powershell": f'Get-NetFirewallRule -DisplayName "EviGraph-Surgical-{rule_id}" -ErrorAction SilentlyContinue',
+                "cisco_ios_acl": f"show ip access-lists 101 | include {attacker}",
+            },
+            "rollback_guidance": {
+                "linux_iptables": f"iptables -D INPUT -s {attacker} -d {victim} -p {proto} --dport {port} -j DROP",
+                "windows_powershell": f'Remove-NetFirewallRule -DisplayName "EviGraph-Surgical-{rule_id}"',
+                "cisco_ios_acl": f"no access-list 101 deny {proto} host {attacker} host {victim} eq {port}",
+            },
+        })
+
+    return {
+        "incident_id": incident_id,
+        "entry_point": plan.get("entry_point"),
+        "severity_score": plan.get("severity_score"),
+        "attack_classes": plan.get("attack_classes", []),
+        "status": "advisory",
+        "advisory_notice": "Recommendations are strictly advisory. Commands must be manually reviewed and executed by authorized SOC operators.",
+        "containment_actions_count": len(actions),
+        "actions": actions,
+        "simulation_run": False,
+    }
+
+
+@app.get("/investigations/{job_id}/incidents/{incident_id}/countermeasures")
+def get_investigation_countermeasures(job_id: str, incident_id: str):
+    _job, cases = _completed_job(job_id)
+    incident = next(
+        (item for item in cases.get("incidents", []) if item.get("incident_id") == incident_id),
+        None,
+    )
+    if incident is None:
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found.")
+
+    cases_path = INVESTIGATION_ROOT / job_id / "incident_cases.json"
+    from src.mitigation.countermeasure_engine import CountermeasureEngine
+    engine = CountermeasureEngine(cases_path if cases_path.is_file() else None)
+    plan = engine.plan_incident_countermeasures(incident)
+
+    actions = []
+    for act in plan.get("actions", []):
+        rule_id = act.get("rule_id", "")
+        attacker = act.get("target_attacker", "")
+        victim = act.get("target_victim", "")
+        port = act.get("destination_port", 0)
+        proto = act.get("protocol", "TCP").lower()
+
+        actions.append({
+            **act,
+            "verification_guidance": {
+                "linux_iptables": f"iptables -C INPUT -s {attacker} -d {victim} -p {proto} --dport {port} -j DROP 2>/dev/null",
+                "windows_powershell": f'Get-NetFirewallRule -DisplayName "EviGraph-Surgical-{rule_id}" -ErrorAction SilentlyContinue',
+                "cisco_ios_acl": f"show ip access-lists 101 | include {attacker}",
+            },
+            "rollback_guidance": {
+                "linux_iptables": f"iptables -D INPUT -s {attacker} -d {victim} -p {proto} --dport {port} -j DROP",
+                "windows_powershell": f'Remove-NetFirewallRule -DisplayName "EviGraph-Surgical-{rule_id}"',
+                "cisco_ios_acl": f"no access-list 101 deny {proto} host {attacker} host {victim} eq {port}",
+            },
+        })
+
+    return {
+        "incident_id": incident_id,
+        "entry_point": plan.get("entry_point"),
+        "severity_score": plan.get("severity_score"),
+        "attack_classes": plan.get("attack_classes", []),
+        "status": "advisory",
+        "advisory_notice": "Recommendations are strictly advisory. Commands must be manually reviewed and executed by authorized SOC operators.",
+        "containment_actions_count": len(actions),
+        "actions": actions,
+        "simulation_run": False,
+    }
+
+
 def resolve_finding_stage(
     finding: dict,
     incident_id: str,
@@ -1152,6 +1367,7 @@ def get_report(incident_id: str):
 
     if not agent_res and not case_incident:
         raise HTTPException(status_code=404, detail="Incident not found")
+
 
     sentences = []
     if agent_res and agent_res.get("findings"):

@@ -96,3 +96,56 @@ export async function getInvestigationEvidence(jobId, incidentId, flowId) {
     `/investigations/${encodeURIComponent(jobId)}/incidents/${encodeURIComponent(incidentId)}/evidence/${encodeURIComponent(flowId)}`,
   );
 }
+
+
+export async function getCountermeasures(incidentId, jobId = null) {
+  if (jobId) {
+    return freshHttp(
+      `/investigations/${encodeURIComponent(jobId)}/incidents/${encodeURIComponent(incidentId)}/countermeasures`,
+    );
+  }
+  if (USE_MOCK) {
+    return {
+      incident_id: incidentId,
+      status: "advisory",
+      advisory_notice: "Recommendations are strictly advisory. Commands must be manually reviewed and executed by authorized SOC operators.",
+      containment_actions_count: 1,
+      actions: [
+        {
+          rule_id: `RULE-${incidentId}-01`,
+          action_tier: "Tier 1: Surgical Ingress Edge Severance",
+          action_type: "EDGE_DROP",
+          target_attacker: "203.0.113.50",
+          target_victim: "10.0.0.5",
+          destination_port: 22,
+          protocol: "TCP",
+          rationale: "Blocks malicious entry from 203.0.113.50 to internal host 10.0.0.5:22.",
+          victim_blast_radius: {
+            blast_radius_score: 0.15,
+            impact_level: "LOW_COLLATERAL_IMPACT",
+            recommended_approach: "FULL_HOST_QUARANTINE_PERMISSIBLE",
+            active_critical_services: [],
+            connectivity_degree: 2,
+          },
+          synthesized_commands: {
+            linux_iptables: "iptables -I INPUT -s 203.0.113.50 -d 10.0.0.5 -p tcp --dport 22 -j DROP",
+            windows_powershell: 'New-NetFirewallRule -DisplayName "EviGraph-Surgical-RULE-01" -Direction Inbound -Action Block -RemoteAddress 203.0.113.50 -LocalAddress 10.0.0.5 -Protocol TCP -LocalPort 22',
+            cisco_ios_acl: "access-list 101 deny tcp host 203.0.113.50 host 10.0.0.5 eq 22",
+          },
+          verification_guidance: {
+            linux_iptables: "iptables -C INPUT -s 203.0.113.50 -d 10.0.0.5 -p tcp --dport 22 -j DROP 2>/dev/null",
+            windows_powershell: 'Get-NetFirewallRule -DisplayName "EviGraph-Surgical-RULE-01" -ErrorAction SilentlyContinue',
+            cisco_ios_acl: "show ip access-lists 101 | include 203.0.113.50",
+          },
+          rollback_guidance: {
+            linux_iptables: "iptables -D INPUT -s 203.0.113.50 -d 10.0.0.5 -p tcp --dport 22 -j DROP",
+            windows_powershell: 'Remove-NetFirewallRule -DisplayName "EviGraph-Surgical-RULE-01"',
+            cisco_ios_acl: "no access-list 101 deny tcp host 203.0.113.50 host 10.0.0.5 eq 22",
+          },
+        },
+      ],
+      simulation_run: false,
+    };
+  }
+  return http(`/incidents/${encodeURIComponent(incidentId)}/countermeasures`);
+}

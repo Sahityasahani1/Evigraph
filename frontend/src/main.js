@@ -6,6 +6,7 @@ import {
   getInvestigationIncidents,
   getInvestigationReport,
   getReport,
+  getCountermeasures,
   listIncidents,
   startInvestigation,
 } from './api/client.js';
@@ -24,6 +25,7 @@ import {
   overviewHtml,
   observedReplayEvents,
   reportHtml,
+  containmentHtml,
   timelineEvents,
 } from './ui/dashboard.js';
 
@@ -35,6 +37,9 @@ const state = {
   jobId: null,
   report: null,
   reportStatus: 'idle',
+  recovery: null,
+  recoveryStatus: 'idle',
+  recoveryError: '',
   events: [],
   selectedEventKey: null,
   selectedStage: null,
@@ -150,6 +155,9 @@ async function selectIncident(sourceKey) {
     state.jobId = listItem.investigation_job_id || null;
     state.report = null;
     state.reportStatus = 'loading';
+    state.recovery = null;
+    state.recoveryStatus = 'loading';
+    state.recoveryError = '';
     state.events = timelineEvents(state.incident);
     stopReplay();
     state.replayEvents = observedReplayEvents(state.events);
@@ -170,6 +178,7 @@ async function selectIncident(sourceKey) {
     renderEvents();
     renderEvidence();
     loadReport();
+  loadContainment();
     if (state.selectedFlowId) loadEvidence(state.selectedFlowId);
   } catch (error) {
     showLoadError(error.message);
@@ -190,6 +199,7 @@ function renderInvestigation() {
   );
   $('attackMappings').innerHTML = attackMappingsHtml(state.report, state.reportStatus);
   $('reportContent').innerHTML = reportHtml(state.report, state.reportStatus, incident);
+  renderContainment();
 }
 
 function renderEvents() {
@@ -418,6 +428,39 @@ async function loadEvidence(flowId) {
   }
 }
 
+
+function renderContainment() {
+  const el = $('containmentContent');
+  if (!el) return;
+  el.innerHTML = containmentHtml(state.recovery, state.recoveryStatus, state.recoveryError);
+  const retryBtn = el.querySelector('[data-retry-containment]');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => loadContainment());
+  }
+}
+
+async function loadContainment() {
+  const incidentId = state.incident?.incident_id;
+  const sourceKey = state.sourceKey;
+  if (!incidentId) return;
+  state.recoveryStatus = 'loading';
+  state.recoveryError = '';
+  renderContainment();
+  try {
+    const data = await getCountermeasures(incidentId, state.jobId);
+    if (state.incident?.incident_id !== incidentId || state.sourceKey !== sourceKey) return;
+    state.recovery = data;
+    state.recoveryStatus = 'loaded';
+    state.recoveryError = '';
+    renderContainment();
+  } catch (error) {
+    if (state.incident?.incident_id !== incidentId || state.sourceKey !== sourceKey) return;
+    state.recoveryStatus = 'error';
+    state.recoveryError = error.message || 'Countermeasure request failed';
+    renderContainment();
+  }
+}
+
 async function loadReport() {
   const incidentId = state.incident?.incident_id;
   const sourceKey = state.sourceKey;
@@ -530,6 +573,7 @@ document.addEventListener('click', event => {
     return;
   }
   if (event.target.closest('[data-retry-report]')) loadReport();
+  if (event.target.closest('[data-retry-containment]')) loadContainment();
   if (event.target.closest('#retryLoad, #retryList')) refreshIncidents();
 });
 

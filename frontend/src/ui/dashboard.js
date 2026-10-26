@@ -327,3 +327,67 @@ function timeValue(value) {
   const parsed = value ? Date.parse(value) : NaN;
   return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
 }
+
+
+export function containmentHtml(data, status, errorMsg = '') {
+  if (status === 'loading') {
+    return '<div class="inline-loading"><span class="spinner small"></span> Synthesizing surgical containment rules…</div>';
+  }
+  if (status === 'error') {
+    const detail = errorMsg ? `<p class="error-detail">${esc(errorMsg)}</p>` : '<p>The backend could not synthesize countermeasures for this incident.</p>';
+    return `<div class="report-error"><strong>Containment recommendations unavailable</strong>${detail}<button type="button" class="button button-secondary" data-retry-containment>Retry containment</button></div>`;
+  }
+  if (!data || !data.actions || data.actions.length === 0) {
+    return '<div class="empty-state compact-empty">No containment actions required or available for this incident.</div>';
+  }
+
+  const actionsHtml = data.actions.map((act, index) => {
+    const blast = act.victim_blast_radius || {};
+    const blastScore = blast.blast_radius_score !== undefined ? Number(blast.blast_radius_score).toFixed(2) : 'N/A';
+    const blastLevel = blast.impact_level || 'UNKNOWN';
+    const commands = act.synthesized_commands || {};
+    const verify = act.verification_guidance || {};
+    const rollback = act.rollback_guidance || {};
+
+    return `<article class="containment-rule-card">
+      <div class="containment-rule-head">
+        <span class="containment-rule-badge">${esc(act.rule_id || `RULE-${index + 1}`)}</span>
+        <strong>${esc(act.action_tier || act.action_type || 'Surgical Edge Drop')}</strong>
+        <span class="blast-badge blast-${blastScore >= 0.65 ? 'high' : blastScore >= 0.35 ? 'med' : 'low'}">Blast: ${esc(blastScore)} (${esc(blastLevel)})</span>
+      </div>
+      <p class="containment-rationale">${esc(act.rationale || '')}</p>
+      <div class="containment-meta">
+        <span>Target: <code>${esc(act.target_attacker)}</code> → <code>${esc(act.target_victim)}:${esc(act.destination_port)}</code> (${esc(act.protocol || 'TCP')})</span>
+        ${blast.recommended_approach ? `<span class="approach-note">Approach: ${esc(blast.recommended_approach)}</span>` : ''}
+      </div>
+      <div class="containment-commands">
+        <div class="command-group">
+          <div class="command-label">Linux (iptables)</div>
+          <pre class="command-code"><code>${esc(commands.linux_iptables || 'N/A')}</code></pre>
+        </div>
+        ${commands.windows_powershell ? `
+        <div class="command-group">
+          <div class="command-label">Windows (PowerShell)</div>
+          <pre class="command-code"><code>${esc(commands.windows_powershell)}</code></pre>
+        </div>` : ''}
+        ${rollback.linux_iptables ? `
+        <details class="guidance-details">
+          <summary>Verification &amp; Rollback Guidance</summary>
+          <div class="guidance-content">
+            <p><strong>Verify:</strong> <code>${esc(verify.linux_iptables || '')}</code></p>
+            <p><strong>Rollback:</strong> <code>${esc(rollback.linux_iptables || '')}</code></p>
+          </div>
+        </details>` : ''}
+      </div>
+    </article>`;
+  }).join('');
+
+  return `<div class="containment-advisory-banner">
+    <span class="advisory-icon" aria-hidden="true">⚠️</span>
+    <div>
+      <strong>Advisory Recommendations Only</strong>
+      <p>${esc(data.advisory_notice || 'Recommendations must be reviewed before execution. Never executed automatically.')}</p>
+    </div>
+  </div>
+  <div class="containment-rules-list">${actionsHtml}</div>`;
+}

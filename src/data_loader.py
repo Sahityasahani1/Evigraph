@@ -9,8 +9,9 @@ Adheres to TRD Section 3.2 and FR-2.5:
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Tuple, List, Optional
-from src.config import METADATA_COLS, SAMPLES_DATA_DIR, LABEL_MAPPING
+from typing import Tuple, List, Optional, Dict, Set
+import re
+from src.config import METADATA_COLS, SAMPLES_DATA_DIR, LABEL_MAPPING, CANONICAL_FEATURES
 
 
 def split_temporally(
@@ -62,6 +63,60 @@ def split_temporally(
 # Canonical column mapping: maps CICFlowMeter verbose / title-cased names to lowercase snake_case
 COLUMN_CANONICAL_MAP = {
     "Flow ID": "flow_id",
+    "Src IP": "src_ip",
+    "Source_IP": "src_ip",
+    "Src_IP": "src_ip",
+    "Source.IP": "src_ip",
+    "Src.IP": "src_ip",
+    "Source Address": "src_ip",
+    "Src Address": "src_ip",
+    "Src Addr": "src_ip",
+    "src_addr": "src_ip",
+    "src_ip": "src_ip",
+    "Dst IP": "dst_ip",
+    "Destination_IP": "dst_ip",
+    "Dst_IP": "dst_ip",
+    "Destination.IP": "dst_ip",
+    "Dst.IP": "dst_ip",
+    "Destination Address": "dst_ip",
+    "Dst Address": "dst_ip",
+    "Dst Addr": "dst_ip",
+    "dst_addr": "dst_ip",
+    "dst_ip": "dst_ip",
+    "Src Port": "src_port",
+    "Source_Port": "src_port",
+    "Src_Port": "src_port",
+    "Source.Port": "src_port",
+    "Src.Port": "src_port",
+    "sport": "src_port",
+    "src_port": "src_port",
+    "Destination Port": "dst_port",
+    "Dst Port": "dst_port",
+    "Destination_Port": "dst_port",
+    "Dst_Port": "dst_port",
+    "Destination.Port": "dst_port",
+    "Dst.Port": "dst_port",
+    "dport": "dst_port",
+    "dst_port": "dst_port",
+    "Proto": "protocol",
+    "proto": "protocol",
+    "Protocol Name": "protocol",
+    "Time Stamp": "timestamp",
+    "Time_Stamp": "timestamp",
+    "Date / Time": "timestamp",
+    "Date/Time": "timestamp",
+    "Date_Time": "timestamp",
+    "DateTime": "timestamp",
+    "ts_start": "timestamp",
+    "Label_Raw": "label",
+    "label_raw": "label",
+    "Class": "label",
+    "class": "label",
+    "Flow_ID": "flow_id",
+    "Flow.ID": "flow_id",
+    "totlen_fwd_pkts": "tot_len_fwd_pkts",
+    "totlen_bwd_pkts": "tot_len_bwd_pkts",
+    "flow_byts_s": "flow_bytes_s",
     "Source IP": "src_ip",
     "Source Port": "src_port",
     "Destination IP": "dst_ip",
@@ -148,6 +203,130 @@ COLUMN_CANONICAL_MAP = {
     "Idle Min": "idle_min"
 }
 
+def _normalize_header(name: str) -> str:
+    """Normalize a header name by stripping whitespace, removing non-alphanumeric chars, and lowercasing."""
+    return re.sub(r"[^a-zA-Z0-9]+", "", str(name).strip()).lower()
+
+
+# Normalized reverse lookup for case/delimiter-insensitive header resolution
+NORMALIZED_CANONICAL_MAP: Dict[str, str] = {
+    _normalize_header(k): v for k, v in COLUMN_CANONICAL_MAP.items()
+}
+
+# Additional normalized synonyms for common telemetry and CIC-IDS2017 variations
+NORMALIZED_CANONICAL_MAP.update({
+    "srcip": "src_ip",
+    "sourceip": "src_ip",
+    "srcaddr": "src_ip",
+    "sourceaddr": "src_ip",
+    "srcaddress": "src_ip",
+    "sourceaddress": "src_ip",
+    "sport": "src_port",
+    "dstip": "dst_ip",
+    "destip": "dst_ip",
+    "destinationip": "dst_ip",
+    "dstaddr": "dst_ip",
+    "destaddr": "dst_ip",
+    "destinationaddr": "dst_ip",
+    "dstaddress": "dst_ip",
+    "destinationaddress": "dst_ip",
+    "dport": "dst_port",
+    "srcport": "src_port",
+    "sourceport": "src_port",
+    "dstport": "dst_port",
+    "destport": "dst_port",
+    "destinationport": "dst_port",
+    "protocol": "protocol",
+    "proto": "protocol",
+    "protocolname": "protocol",
+    "timestamp": "timestamp",
+    "datetime": "timestamp",
+    "dateandtime": "timestamp",
+    "tsstart": "timestamp",
+    "ts": "timestamp",
+    "flowid": "flow_id",
+    "label": "label",
+    "labelraw": "label",
+    "class": "label",
+    "target": "label",
+    "totlenfwdpkts": "tot_len_fwd_pkts",
+    "totallengthoffwdpackets": "tot_len_fwd_pkts",
+    "totallengthoffwdpacket": "tot_len_fwd_pkts",
+    "totlenbwdpkts": "tot_len_bwd_pkts",
+    "totallengthofbwdpackets": "tot_len_bwd_pkts",
+    "totallengthofbwdpacket": "tot_len_bwd_pkts",
+    "flowbytss": "flow_bytes_s",
+    "flowbyts": "flow_bytes_s",
+    "flowpktss": "flow_pkts_s",
+    "flowpacketss": "flow_pkts_s",
+    "flowduration": "flow_duration",
+    "duration": "flow_duration",
+})
+
+
+def standardize_flow_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Standardizes raw DataFrame column headers to EviGraph's canonical schema.
+    Handles:
+    - Case-insensitivity (e.g. 'SOURCE IP', 'source ip')
+    - Surrounding and internal whitespace
+    - Punctuation differences: dots, hyphens, underscores, slashes (e.g. 'Source.IP', 'Date / Time')
+    - Equivalent naming aliases for metadata (e.g. 'Src IP' -> 'src_ip', 'Dst Port' -> 'dst_port')
+    - Feature columns needed by XGBoost and GNN detectors (e.g. 'tot_len_fwd_pkts')
+    - Preserves existing canonical columns and avoids overwriting them with duplicates.
+    """
+    if df.empty and len(df.columns) == 0:
+        return df
+
+    raw_columns = [str(c).strip() for c in df.columns]
+    existing_canonical = {c for c in raw_columns if c in CANONICAL_FEATURES or c in METADATA_COLS}
+
+    rename_map: Dict[str, str] = {}
+    for orig_col, stripped in zip(df.columns, raw_columns):
+        if stripped in CANONICAL_FEATURES or stripped in METADATA_COLS:
+            if orig_col != stripped:
+                rename_map[orig_col] = stripped
+            continue
+
+        if stripped in COLUMN_CANONICAL_MAP:
+            target = COLUMN_CANONICAL_MAP[stripped]
+            if target not in existing_canonical or orig_col == target:
+                rename_map[orig_col] = target
+                existing_canonical.add(target)
+                continue
+
+        norm = _normalize_header(stripped)
+        if norm in NORMALIZED_CANONICAL_MAP:
+            target = NORMALIZED_CANONICAL_MAP[norm]
+            if target not in existing_canonical or orig_col == target:
+                rename_map[orig_col] = target
+                existing_canonical.add(target)
+                continue
+
+        if orig_col != stripped:
+            rename_map[orig_col] = stripped
+
+    df = df.rename(columns=rename_map)
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    # Dual-populate common feature alias pairs to guarantee compatibility across detectors
+    if "tot_len_fwd_pkts" in df.columns and "totlen_fwd_pkts" not in df.columns:
+        df["totlen_fwd_pkts"] = df["tot_len_fwd_pkts"]
+    elif "totlen_fwd_pkts" in df.columns and "tot_len_fwd_pkts" not in df.columns:
+        df["tot_len_fwd_pkts"] = df["totlen_fwd_pkts"]
+
+    if "tot_len_bwd_pkts" in df.columns and "totlen_bwd_pkts" not in df.columns:
+        df["totlen_bwd_pkts"] = df["tot_len_bwd_pkts"]
+    elif "totlen_bwd_pkts" in df.columns and "tot_len_bwd_pkts" not in df.columns:
+        df["tot_len_bwd_pkts"] = df["totlen_bwd_pkts"]
+
+    if "flow_bytes_s" in df.columns and "flow_byts_s" not in df.columns:
+        df["flow_byts_s"] = df["flow_bytes_s"]
+    elif "flow_byts_s" in df.columns and "flow_bytes_s" not in df.columns:
+        df["flow_bytes_s"] = df["flow_byts_s"]
+
+    return df
+
 class FlowDataLoader:
     def __init__(self, metadata_cols: Optional[List[str]] = None):
         self.metadata_cols = metadata_cols or METADATA_COLS
@@ -157,12 +336,8 @@ class FlowDataLoader:
         """Removes infinite/NaN values and duplicates (TRD FR-2.5)."""
         initial_len = len(df)
         
-        # Strip column names of whitespace
-        df.columns = [c.strip() for c in df.columns]
-        
-        # Standardize column names to canonical snake_case
-        df = df.rename(columns={k: v for k, v in COLUMN_CANONICAL_MAP.items() if k in df.columns})
-        df = df.loc[:, ~df.columns.duplicated()]
+        # Standardize column names to canonical schema
+        df = standardize_flow_columns(df)
 
         # Clean label strings (strip spaces, replace non-standard dashes, standardize BENIGN)
         if "label" in df.columns:
@@ -261,9 +436,7 @@ class FlowDataLoader:
             df = pd.read_csv(file_path, sep=sep)
             
         # Standardize known column names
-        df.columns = [c.strip() for c in df.columns]
-        df = df.rename(columns={k: v for k, v in COLUMN_CANONICAL_MAP.items() if k in df.columns})
-        df = df.loc[:, ~df.columns.duplicated()]
+        df = standardize_flow_columns(df)
         
         # Clean label strings
         if "label" in df.columns:
