@@ -101,5 +101,92 @@ class TestForensicAgentAndRAG(unittest.TestCase):
         self.assertEqual(val["hallucinated_count"], 0)
         self.assertGreater(val["total_citations"], 0)
 
+    def test_ollama_tool_call_followed_by_final_answer(self):
+        from types import SimpleNamespace
+        agent = ForensicAgent(self.cases_file)
+        valid_fid = next(iter(agent.validator.valid_flow_ids))
+        call_count = 0
+
+        def mock_chat(model, messages, tools):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                tc = SimpleNamespace(
+                    function=SimpleNamespace(name="get_flow_count", arguments={"host_ip": "10.0.0.1"})
+                )
+                return SimpleNamespace(message=SimpleNamespace(role="assistant", content="", tool_calls=[tc]))
+            else:
+                self.assertEqual(messages[-1]["role"], "tool")
+                self.assertEqual(messages[-1]["tool_name"], "get_flow_count")
+                return SimpleNamespace(
+                    message=SimpleNamespace(
+                        role="assistant",
+                        content=f"Forensic findings confirmed with flow evidence [E:{valid_fid}].",
+                        tool_calls=None,
+                    )
+                )
+
+        report = agent._generate_report_ollama(chat_fn=mock_chat)
+        self.assertIsNotNone(report)
+        self.assertIn(f"[E:{valid_fid}]", report)
+        val = agent.validator.validate_report(report)
+        self.assertTrue(val["passed_threshold"])
+
+    def test_ollama_unknown_tool_handling(self):
+        from types import SimpleNamespace
+        agent = ForensicAgent(self.cases_file)
+        valid_fid = next(iter(agent.validator.valid_flow_ids))
+        call_count = 0
+
+        def mock_chat(model, messages, tools):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                tc = SimpleNamespace(
+                    function=SimpleNamespace(name="unknown_external_tool", arguments={"query": "test"})
+                )
+                return SimpleNamespace(message=SimpleNamespace(role="assistant", content="", tool_calls=[tc]))
+            else:
+                tool_msg = messages[-1]
+                self.assertEqual(tool_msg["role"], "tool")
+                self.assertEqual(tool_msg["tool_name"], "unknown_external_tool")
+                self.assertIn("Unknown tool 'unknown_external_tool'", tool_msg["content"])
+                return SimpleNamespace(
+                    message=SimpleNamespace(
+                        role="assistant",
+                        content=f"Recovered from error and grounded in [E:{valid_fid}].",
+                        tool_calls=None,
+                    )
+                )
+
+        report = agent._generate_report_ollama(chat_fn=mock_chat)
+        self.assertIsNotNone(report)
+        val = agent.validator.validate_report(report)
+        self.assertTrue(val["passed_threshold"])
+
+    def test_ollama_iteration_limit_fallback(self):
+        from types import SimpleNamespace
+        agent = ForensicAgent(self.cases_file, max_iterations=3)
+
+        def mock_infinite_tools(model, messages, tools):
+            tc = SimpleNamespace(
+                function=SimpleNamespace(name="get_flow_count", arguments={"host_ip": "10.0.0.1"})
+            )
+            return SimpleNamespace(message=SimpleNamespace(role="assistant", content="", tool_calls=[tc]))
+
+        report = agent._generate_report_ollama(chat_fn=mock_infinite_tools)
+        self.assertIsNone(report)
+
+        # Full run() fallback executes deterministic engine with 100% verified citations
+        agent_fb = ForensicAgent(self.cases_file, max_iterations=2, chat_fn=mock_infinite_tools)
+        report_file = OUTPUTS_DIR / "test_iteration_limit_fallback.md"
+        result_path = agent_fb.run(output_report_path=report_file)
+        self.assertTrue(result_path.exists())
+        with open(result_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        val = agent_fb.validator.validate_report(text)
+        self.assertTrue(val["passed_threshold"])
+        self.assertEqual(val["hallucinated_count"], 0)
+
 if __name__ == "__main__":
     unittest.main()

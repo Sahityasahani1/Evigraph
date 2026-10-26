@@ -75,10 +75,14 @@ class ForensicAgent:
         incident_cases_path: Optional[Path] = None,
         model_name: str = "llama3.2:3b",
         attack_knowledge: Optional[AttackKnowledge] = None,
+        max_iterations: int = 10,
+        chat_fn: Optional[Any] = None,
     ):
         self.cases_path = Path(incident_cases_path or (OUTPUTS_DIR / "incident_cases.json"))
         self.model_name = model_name
         self.attack_knowledge = attack_knowledge or AttackKnowledge()
+        self.max_iterations = max_iterations
+        self.chat_fn = chat_fn
         self.attack_matches: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self._attack_matches_ready = False
         self.validator = CitationValidator(self.cases_path)
@@ -362,22 +366,30 @@ class ForensicAgent:
     # REASONING & REPORT GENERATION
     # =========================================================================
 
-    def _generate_report_ollama(self) -> Optional[str]:
+    def _generate_report_ollama(
+        self,
+        max_iterations: Optional[int] = None,
+        chat_fn: Optional[Any] = None,
+    ) -> Optional[str]:
         """Attempts to generate report using local Ollama model with tool-calling."""
         self._prepare_attack_matches()
-        try:
-            import ollama
-        except ImportError:
-            return None
+        chat_call = chat_fn or self.chat_fn
+        if chat_call is None:
+            try:
+                import ollama
+                chat_call = ollama.chat
+            except ImportError:
+                return None
 
         # Build tools list for Ollama
-        tools = [
-            self.get_flow_count,
-            self.get_incident_summary,
-            self.get_flow_evidence,
-            self.map_to_mitre_attack,
-            self.query_attack_path
-        ]
+        tool_map = {
+            "get_flow_count": self.get_flow_count,
+            "get_incident_summary": self.get_incident_summary,
+            "get_flow_evidence": self.get_flow_evidence,
+            "map_to_mitre_attack": self.map_to_mitre_attack,
+            "query_attack_path": self.query_attack_path,
+        }
+        tools = list(tool_map.values())
 
         system_prompt = (
             "You are the EviGraph Chief Forensic Reasoning Agent (Member 3). "
@@ -404,38 +416,93 @@ class ForensicAgent:
             + "\n\nQuery the tools for host flows and evidence IDs to ground every finding with [E:<flow_id>] citations."
         )
 
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        limit = max_iterations if max_iterations is not None else self.max_iterations
         try:
-            response = ollama.chat(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                tools=tools
-            )
-            # Handle tool calling loop if requested by model
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-                response.message
-            ]
-            while response.message.tool_calls:
-                for tool_call in response.message.tool_calls:
-                    fn_name = tool_call.function.name
-                    fn_args = tool_call.function.arguments or {}
-                    fn_tool = getattr(self, fn_name, None)
-                    if fn_tool:
-                        tool_result = fn_tool(**fn_args)
+            for iteration in range(1, limit + 1):
+                response = chat_call(
+                    model=self.model_name,
+                    messages=messages,
+                    tools=tools,
+                )
+                msg = getattr(response, "message", None)
+                if msg is None and isinstance(response, dict):
+                    msg_data = response.get("message", response)
+                    from types import SimpleNamespace
+                    msg = SimpleNamespace(
+                        role=msg_data.get("role", "assistant"),
+                        content=msg_data.get("content", ""),
+                        tool_calls=msg_data.get("tool_calls", []),
+                    )
+
+                messages.append(msg)
+
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                if not tool_calls:
+                    content = getattr(msg, "content", "") or ""
+
+                    # Check if output is a raw tool call JSON object
+                    trimmed = content.strip()
+                    if (trimmed.startswith("{") and trimmed.endswith("}")) or (trimmed.startswith("[") and trimmed.endswith("]")):
+                        try:
+                            parsed = json.loads(trimmed)
+                            if isinstance(parsed, dict) and any(k in parsed for k in ("tool_calls", "function", "name", "arguments")):
+                                print("[ForensicAgent] Ollama output raw tool-call JSON instead of report narrative. Using deterministic reasoning engine.")
+                                return None
+                        except Exception:
+                            pass
+
+                    # Validate citations in final report
+                    val = self.validator.validate_report(content)
+                    if not val.get("passed_threshold"):
+                        print(
+                            f"[ForensicAgent] Ollama report failed citation validation "
+                            f"(faithfulness: {val.get('citation_faithfulness_pct')}%, "
+                            f"citations: {val.get('total_citations')}). Using deterministic reasoning engine."
+                        )
+                        return None
+
+                    return content
+
+                for tc in tool_calls:
+                    if hasattr(tc, "function"):
+                        fn_name = tc.function.name
+                        fn_args = tc.function.arguments or {}
+                    elif isinstance(tc, dict):
+                        fn_data = tc.get("function", tc)
+                        fn_name = fn_data.get("name")
+                        fn_args = fn_data.get("arguments", {})
                     else:
-                        tool_result = {"error": f"Unknown tool {fn_name}"}
+                        continue
+
+                    if isinstance(fn_args, str):
+                        try:
+                            fn_args = json.loads(fn_args)
+                        except Exception:
+                            fn_args = {}
+
+                    fn_tool = tool_map.get(fn_name)
+                    if fn_tool:
+                        try:
+                            tool_result = fn_tool(**fn_args)
+                        except Exception as exc:
+                            tool_result = {"error": f"Tool execution failed: {exc}"}
+                    else:
+                        tool_result = {"error": f"Unknown tool '{fn_name}'. Available: {list(tool_map.keys())}"}
+
                     messages.append({
                         "role": "tool",
-                        "content": json.dumps(tool_result),
+                        "tool_name": fn_name,
+                        "content": json.dumps(tool_result, default=str),
                     })
-                response = ollama.chat(model=self.model_name, messages=messages, tools=tools)
-                messages.append(response.message)
 
-            return response.message.content
+            print(f"[ForensicAgent] Tool-call limit ({limit}) reached without final answer. Using deterministic reasoning engine.")
+            return None
+
         except Exception as e:
             print(f"[ForensicAgent] Ollama inference skipped/unavailable ({e}). Using deterministic reasoning engine.")
             return None

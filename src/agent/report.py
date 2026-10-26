@@ -5,7 +5,7 @@ import re
 from ipaddress import ip_address, ip_network
 
 import ollama
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from src.agent.audit import NUM_CTX, SEED, audit_target, log_run, run_info
 from src.agent.victim_rule import attacker_side_problem
@@ -35,6 +35,13 @@ class Finding(BaseModel):
     claim: str
     flow_ids: list[str] = Field(default_factory=list)
     technique_id: str | None = None
+
+    @field_validator("technique_id", mode="before")
+    @classmethod
+    def _normalize_technique_id(cls, v):
+        if isinstance(v, str) and v.strip().lower() in ("null", "none", ""):
+            return None
+        return v
 
 
 class FindingList(BaseModel):

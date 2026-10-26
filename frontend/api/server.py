@@ -1432,6 +1432,8 @@ def get_report(incident_id: str):
         report_payload.update({
             "summary": agent_res.get("summary"),
             "summary_withheld_reason": agent_res.get("summary_withheld_reason"),
+            "reasoning_status": agent_res.get("reasoning_status", "available"),
+            "reasoning_error": agent_res.get("reasoning_error"),
             "factual_summary": agent_res.get("factual_summary"),
             "findings": agent_res.get("findings", []),
             "rejected_findings": agent_res.get("rejected_findings", []),
