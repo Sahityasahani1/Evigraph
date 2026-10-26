@@ -272,6 +272,8 @@ select { padding: 5px 26px 5px 9px; }
 .validation-warn { border-color: #735b37; color: #edc77b; background: #30291e; }.validation-warn span { color: #c8b994; }
 .degraded-note { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; padding: 8px 10px; border-left: 2px solid var(--yellow); color: #e5c883; background: #2b281f; }
 .degraded-note strong { font-size: 10px; }.degraded-note span { color: #c0b798; font-size: 10px; }
+.reasoning-status.available { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; padding: 8px 10px; border-left: 2px solid var(--green); color: #9be0bd; background: #182c25; }
+.reasoning-status.available strong { font-size: 10px; }.reasoning-status.available span { color: #a2b8ad; font-size: 10px; }
 .report-summary { margin: 12px 0 7px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 5px; background: #17212a; }
 .report-summary p { margin: 5px 0 0; color: #c2cdd3; font-size: 11px; line-height: 1.55; }
 .report-claims { display: flex; flex-direction: column; }

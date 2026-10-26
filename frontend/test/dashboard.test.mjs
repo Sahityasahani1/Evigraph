@@ -131,3 +131,40 @@ test('report claims expose citations and explicit unsupported validation state',
   assert.match(html, /No evidence reference returned/);
   assert.match(html, /Stage reference not available/);
 });
+
+
+test('report reasoning status displays active, degraded, or neither correctly', () => {
+  const availableHtml = reportHtml({
+    incident_id: 'INC-TEST',
+    reasoning_status: 'available',
+    sentences: [],
+  }, 'loaded', incident);
+  assert.match(availableHtml, /AI reasoning active/);
+  assert.match(availableHtml, /class="reasoning-status available"/);
+  assert.doesNotMatch(availableHtml, /Deterministic report/);
+
+  const degradedHtml = reportHtml({
+    incident_id: 'INC-TEST',
+    reasoning_status: 'degraded',
+    reasoning_error: 'model not found',
+    sentences: [],
+  }, 'loaded', incident);
+  assert.match(degradedHtml, /Deterministic report · reasoning degraded/);
+  assert.match(degradedHtml, /model not found/);
+  assert.doesNotMatch(degradedHtml, /AI reasoning active/);
+
+  const missingHtml = reportHtml({
+    incident_id: 'INC-TEST',
+    sentences: [],
+  }, 'loaded', incident);
+  assert.doesNotMatch(missingHtml, /AI reasoning active/);
+  assert.doesNotMatch(missingHtml, /Deterministic report/);
+
+  const unknownHtml = reportHtml({
+    incident_id: 'INC-TEST',
+    reasoning_status: 'unknown',
+    sentences: [],
+  }, 'loaded', incident);
+  assert.doesNotMatch(unknownHtml, /AI reasoning active/);
+  assert.doesNotMatch(unknownHtml, /Deterministic report/);
+});

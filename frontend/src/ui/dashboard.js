@@ -306,7 +306,11 @@ export function reportHtml(report, reportStatus, incident) {
     <strong>${hasValidation ? `${valid}/${total} claims supported` : 'Validation details unavailable'}</strong>
     <span>${rejected ? `${rejected} claim${rejected === 1 ? '' : 's'} rejected` : hasValidation && valid === total ? 'No unsupported claims reported' : 'Review evidence links before relying on these claims'}</span>
   </div>
-  ${report.reasoning_status === 'degraded' ? `<div class="degraded-note"><strong>Deterministic report · reasoning degraded</strong><span>${esc(report.reasoning_error || 'Local reasoning service is unavailable. No generated findings are claimed.')}</span></div>` : ''}
+  ${report.reasoning_status === 'degraded'
+    ? `<div class="degraded-note"><strong>Deterministic report · reasoning degraded</strong><span>${esc(report.reasoning_error || 'Local reasoning service is unavailable. No generated findings are claimed.')}</span></div>`
+    : report.reasoning_status === 'available'
+      ? `<div class="reasoning-status available"><strong>AI reasoning active</strong><span>Local reasoning model grounded this report.</span></div>`
+      : ''}
   ${summary ? `<div class="report-summary"><span class="eyebrow">SUMMARY</span><p>${esc(summary)}</p></div>` : ''}
   <div class="report-claims">${claims || '<div class="empty-state compact-empty">The report returned no evidence-linked claims.</div>'}</div>
   ${rejectedClaims ? `<div class="rejected-claims"><strong>Unsupported claims returned by backend</strong><ul>${rejectedClaims}</ul></div>` : ''}
