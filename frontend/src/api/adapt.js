@@ -75,7 +75,7 @@ export function adapt(raw) {
       evidence: (s0.evidence ?? []).map(e => ({ ...e, ts: utc(e.ts) ?? s0.start, pcap_sha256: e.pcap_sha256 ?? '' })),
     };
     const p = merged.at(-1);
-    if (p && p.tactic === s.tactic && p.src === s.src && p.dst === s.dst) {
+    if (p && p.tactic !== 'Lateral Movement' && p.tactic === s.tactic && p.src === s.src && p.dst === s.dst) {
       if (ms(s.end) > ms(p.end)) p.end = s.end;
       p.confidence = Math.max(p.confidence, s.confidence); p.observed = p.observed && s.observed;
       p.evidence = [...p.evidence, ...s.evidence].slice(0, 8); p.merged = (p.merged ?? 1) + 1;

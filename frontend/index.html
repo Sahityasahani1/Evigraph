@@ -86,6 +86,8 @@
                     <button type="button" data-graph-action="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
                     <button type="button" data-graph-action="fit" title="Fit graph to view">Fit</button>
                     <button type="button" data-graph-action="reset" title="Reset graph view">Reset</button>
+                    <button type="button" id="graphModeToggle" data-graph-action="toggle-mode" title="Switch 2D / 3D view">2D</button>
+                    <button type="button" id="fullscreen3dBtn" data-graph-action="fullscreen-3d" title="Open fullscreen 3D attack investigation">Fullscreen 3D</button>
                   </div>
                 </div>
                 <p class="panel-subtitle">Observed hosts and reported communication paths. Select a host or path to inspect its evidence.</p>
@@ -175,6 +177,77 @@
           </div>
         </div>
       </main>
+    </div>
+
+    <div id="fullscreenOverlay" class="fullscreen-overlay" hidden role="dialog" aria-modal="true" aria-label="Fullscreen 3D attack investigation">
+      <header class="fullscreen-topbar">
+        <div class="fullscreen-title-group">
+          <span class="eyebrow">3D FORENSIC CONSOLE</span>
+          <h2 id="fullscreenTitle">Incident Investigation</h2>
+        </div>
+        <div class="fullscreen-topbar-controls">
+          <button type="button" id="fsBenignBtn" class="sm on" title="Toggle normal background traffic">Normal traffic</button>
+          <button type="button" id="fsRotateBtn" class="sm on" title="Toggle camera auto-rotation">Auto-rotate</button>
+          <button type="button" id="fsPacketsBtn" class="sm on" title="Toggle animated packet pulses">Packets</button>
+          <button type="button" id="fsFollowBtn" class="sm on" title="Toggle camera focus follow">Camera follow</button>
+        </div>
+        <div class="fullscreen-topbar-actions">
+          <button type="button" id="fullscreenExitBtn" class="button button-secondary" title="Exit fullscreen mode (Esc)">Exit Fullscreen (Esc)</button>
+        </div>
+      </header>
+
+      <div class="fullscreen-body">
+        <aside id="fullscreenLeft" class="fullscreen-sidebar" aria-label="Attack chain">
+          <div class="fullscreen-sidebar-header">
+            <h3>Attack Chain</h3>
+            <span id="fullscreenChainCount" class="count-pill">0</span>
+          </div>
+          <div id="fullscreenChain" class="fullscreen-chain-list" role="list"></div>
+        </aside>
+
+        <main class="fullscreen-main">
+          <div id="fullscreenGraphCanvas" class="fullscreen-canvas-wrapper" tabindex="0" aria-label="Fullscreen 3D communication graph"></div>
+          <div id="fsCap" class="fullscreen-caption" hidden></div>
+        </main>
+
+        <aside id="fullscreenRight" class="fullscreen-sidebar fullscreen-right-sidebar" aria-label="Selected incident details">
+          <div class="fs-tabs" role="tablist" aria-label="Forensic details tabs">
+            <button type="button" id="fsTabEvidenceBtn" class="fs-tab-btn active" role="tab" aria-selected="true" data-fs-tab="evidence">Evidence</button>
+            <button type="button" id="fsTabReportBtn" class="fs-tab-btn" role="tab" aria-selected="false" data-fs-tab="report">Verified Report</button>
+          </div>
+          <div id="fsEvidenceTab" class="fs-tab-content active" role="tabpanel" aria-labelledby="fsTabEvidenceBtn">
+            <div id="fsEvidenceInspector" class="fs-detail-pane"></div>
+          </div>
+          <div id="fsReportTab" class="fs-tab-content" role="tabpanel" aria-labelledby="fsTabReportBtn" hidden>
+            <div id="fsReportContent" class="fs-detail-pane"></div>
+            <div id="fsAttackMappings" class="fs-detail-pane"></div>
+          </div>
+        </aside>
+      </div>
+
+      <footer class="fullscreen-replay-bar" role="toolbar" aria-label="Attack replay controls">
+        <div class="fs-replay-toolbar">
+          <button type="button" id="fsPrevBtn" class="button button-secondary" title="Jump to previous stage">◀</button>
+          <button type="button" id="fsPlayPauseBtn" class="button button-primary" title="Play or pause replay">Play</button>
+          <button type="button" id="fsNextBtn" class="button button-secondary" title="Jump to next stage">▶</button>
+          <button type="button" id="fsRestartBtn" class="button button-secondary" title="Restart replay">Restart</button>
+          <div class="fs-speed-group" role="group" aria-label="Replay speed">
+            <label for="fsSpeedSelect" class="sr-only">Speed</label>
+            <select id="fsSpeedSelect" class="fs-speed-select" aria-label="Replay speed" title="Replay speed">
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+            </select>
+          </div>
+          <span id="fsReplayStageProgress" class="fs-replay-stage-progress">Stage 1 of 1</span>
+          <span id="fsReplayStatus" class="fs-replay-status mu" hidden></span>
+          <div class="fs-timeline-container" title="Click or drag colored timeline to scrub">
+            <div id="fsTimeline" class="fs-timeline" tabindex="0" role="slider" aria-label="Attack replay timeline"></div>
+            <input type="range" id="fsReplayProgress" min="0" max="30" step="0.01" value="0" aria-label="Timeline scrubber" class="sr-only" />
+          </div>
+          <span id="fsClock" class="fs-clock mu">T+0.0 min · Ready</span>
+        </div>
+      </footer>
     </div>
 
     <script type="module" src="/src/main.js"></script>

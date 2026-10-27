@@ -55,9 +55,12 @@ export function overviewHtml(inc, t) {
   <p class="mu fine">Click a machine, a connection or a story card to open its proof. Click empty space to return here.</p>`;
 }
 
-const receipt = (s, e) => `<div class="receipt"><div class="rh"><span class="tag" data-stage="${esc(s.stage_id)}" data-evidence="${esc(e.flow_id)}">${esc(e.flow_id)}</span><span class="mu">${esc((e.ts || '').slice(11, 19))} UTC</span></div>
+const receipt = (s, e) => {
+  const timeStr = e.ts ? new Date(e.ts).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST' : '';
+  return `<div class="receipt"><div class="rh"><span class="tag" data-stage="${esc(s.stage_id)}" data-evidence="${esc(e.flow_id)}">${esc(e.flow_id)}</span><span class="mu">${esc(timeStr)}</span></div>
   <div class="rf"><span data-tip="hash">Fingerprint</span> ${e.pcap_sha256 ? `<code>${esc(e.pcap_sha256.slice(0, 16))}…</code>` : '<span class="mu">not recorded</span>'}
   ${e.pcap_sha256 ? `<button class="mini" data-copy="${esc(e.pcap_sha256)}">${icon('copy', 12)} Copy</button>` : ''}</div></div>`;
+};
 
 export function detailHtml(inc, sel, t) {
   if (sel?.stage) {
@@ -193,10 +196,14 @@ export function hoverHtml(inc, h, t) {
   return `<b>${esc(p.title)}</b><div>${ip(inc, s.src)} → ${ip(inc, s.dst)}${s.port ? `:${esc(s.port)}` : ''}</div><div class="why">${s.observed ? 'Seen' : 'Likely'} · ${confWord(s.confidence)} confidence</div><div>${esc(s.summary)}</div>`;
 }
 
-export function capHtml(inc, s, kind) {
-  if (!s) return kind === 'END'
-    ? `<div class="ico-tile">${icon('check', 20)}</div><div><div class="cap-t"><b>End of incident</b></div><div class="cap-d">${esc(headline(inc))}</div></div>`
-    : `<div class="ico-tile">${icon('play', 20)}</div><div><div class="cap-t"><b>Ready</b></div><div class="cap-d">Press Replay to watch the attack unfold. The camera follows each step.</div></div>`;
+export function capHtml(inc, s, kind, originHost = null) {
+  if (!s) {
+    if (kind === 'END') {
+      return `<div class="ico-tile">${icon('check', 20)}</div><div><div class="cap-t"><b>End of incident</b></div><div class="cap-d">${esc(headline(inc))}</div></div>`;
+    }
+    const originDesc = originHost ? ` Origin: ${esc(originHost.id || originHost.ip)}.` : '';
+    return `<div class="ico-tile">${icon('play', 20)}</div><div><div class="cap-t"><b>Ready</b></div><div class="cap-d">Press Replay to watch the attack unfold.${originDesc} The camera follows each step.</div></div>`;
+  }
   const p = plainOf(s.tactic);
   const cleanSummary = (s.summary || '').replace(/\.+$/, '');
   return `<div class="ico-tile" style="--c:${css(colorOf(s.tactic))}">${icon(p.icon, 20)}</div><div>

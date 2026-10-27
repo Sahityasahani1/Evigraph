@@ -52,8 +52,8 @@ const inc0009 = {
 };
 
 export const mockList = () => [
-  { incident_id: inc0009.incident_id, score: inc0009.score, start: inc0009.start, end: inc0009.end, status: inc0009.status },
   { incident_id: 'INC-0001', score: 0.8994, start: '2026-11-02T09:05:04.094161Z', end: '2026-11-02T10:23:38.562901Z', status: 'candidate' },
+  { incident_id: inc0009.incident_id, score: inc0009.score, start: inc0009.start, end: inc0009.end, status: inc0009.status },
   { incident_id: 'INC-0002', score: 0.7726, start: '2026-10-15T09:11:04Z', end: '2026-10-15T09:21:38Z', status: 'candidate' },
   { incident_id: incident.incident_id, score: incident.score, start: incident.start, end: incident.end, status: incident.status },
 ];

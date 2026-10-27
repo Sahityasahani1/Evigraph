@@ -1,4 +1,5 @@
 import { esc } from '../utils.js';
+import { colorOf, css } from '../config.js';
 import { normalizeAttackMatches } from '../attackCandidates.js';
 
 const numeric = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
@@ -319,12 +320,15 @@ export function reportHtml(report, reportStatus, incident) {
 
 export function formatDateTime(value) {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Time unavailable';
-  return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium', hour12: false });
+  return new Date(value).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium', hour12: false }) + ' IST';
 }
 
 export function formatTime(value) {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Time unavailable';
-  return new Date(value).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+  const d = new Date(value);
+  const timeStr = d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false });
+  const year = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  return `${year} ${timeStr} IST`;
 }
 
 function timeValue(value) {
@@ -394,4 +398,25 @@ export function containmentHtml(data, status, errorMsg = '') {
     </div>
   </div>
   <div class="containment-rules-list">${actionsHtml}</div>`;
+}
+
+export function fullscreenStageCardHtml(stage, index, isActive = false) {
+  const isObserved = stage.observed !== false && stage.interpretation_status !== 'inferred';
+  const confidence = numeric(stage.confidence) ? `${Math.round(Number(stage.confidence) * 100)}% conf` : '';
+  const tacticId = stage.tactic_id || '';
+  const routeText = `${esc(stage.src || 'Unknown')} → ${esc(stage.dst || 'Unknown')}${stage.port ? `:${esc(stage.port)}` : ''}`;
+  const color = stage.tactic ? css(colorOf(stage.tactic)) : '#56c4d3';
+
+  return `<div class="fs-chain-card ${isActive ? 'active' : ''}" data-stage="${esc(stage.stage_id || '')}" data-stage-id="${esc(stage.stage_id || '')}" style="--accent:${color}">
+    <div class="fs-chain-header">
+      <span class="fs-chain-title">${index + 1}. ${esc(stage.tactic || 'Stage')}</span>
+      <div class="fs-chain-badges">
+        <span class="fs-badge ${isObserved ? 'fs-badge-observed' : 'fs-badge-inferred'}">${isObserved ? 'Observed' : 'Inferred'}</span>
+        ${tacticId ? `<span class="fs-badge fs-badge-tech">${esc(tacticId)}</span>` : ''}
+        ${confidence ? `<span class="fs-badge fs-badge-conf">${confidence}</span>` : ''}
+      </div>
+    </div>
+    <div class="fs-chain-route">${routeText}</div>
+    ${stage.summary ? `<div class="fs-chain-summary">${esc(stage.summary)}</div>` : ''}
+  </div>`;
 }

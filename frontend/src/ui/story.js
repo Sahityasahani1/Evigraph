@@ -57,3 +57,131 @@ export function activeStage(inc, t) {
   if (t < 0.01) return null;
   return inc.stages.filter(s => t >= s.t0 && t <= s.t1).sort((a, b) => b.t0 - a.t0)[0] ?? null;
 }
+
+
+export function prepareTimelineIncident(inc) {
+  if (!inc) return inc;
+  const clone = { ...inc };
+  const rawStages = Array.isArray(inc.stages) ? inc.stages : [];
+
+  const parseTs = val => {
+    if (!val || typeof val !== 'string') return NaN;
+    const ms = Date.parse(val);
+    return isNaN(ms) ? NaN : ms;
+  };
+
+  const stageStarts = rawStages.map(s => {
+    const t = parseTs(s.start);
+    if (!isNaN(t)) return t;
+    const flowTs = parseTs(s.evidence?.[0]?.ts);
+    return !isNaN(flowTs) ? flowTs : NaN;
+  }).filter(t => !isNaN(t));
+
+  const stageEnds = rawStages.map(s => {
+    const t = parseTs(s.end);
+    if (!isNaN(t)) return t;
+    const flowTs = parseTs(s.evidence?.at(-1)?.ts);
+    return !isNaN(flowTs) ? flowTs : NaN;
+  }).filter(t => !isNaN(t));
+
+  const rawStartMs = parseTs(inc.start);
+  const startMs = !isNaN(rawStartMs)
+    ? rawStartMs
+    : (stageStarts.length ? Math.min(...stageStarts) : 0);
+
+  const rawEndMs = parseTs(inc.end);
+  let endMs = !isNaN(rawEndMs)
+    ? rawEndMs
+    : (stageEnds.length ? Math.max(...stageEnds) : 0);
+
+  if (startMs > 0 && endMs <= startMs) {
+    if (stageEnds.length && Math.max(...stageEnds) > startMs) {
+      endMs = Math.max(...stageEnds);
+    } else {
+      endMs = startMs + Math.max(1, rawStages.length * 5) * 60000;
+    }
+  }
+
+  const hasRealTimestamps = startMs > 0 && endMs > startMs;
+  let durationMin = hasRealTimestamps
+    ? (endMs - startMs) / 60000
+    : Math.max(1, rawStages.length * 5 || 30);
+
+  if (!durationMin || durationMin < 1 || isNaN(durationMin)) {
+    durationMin = Math.max(1, rawStages.length * 5 || 30);
+  }
+
+  const sortedStages = [...rawStages].sort((a, b) => {
+    const aT = parseTs(a.start) || (a.evidence?.[0]?.ts ? parseTs(a.evidence[0].ts) : NaN);
+    const bT = parseTs(b.start) || (b.evidence?.[0]?.ts ? parseTs(b.evidence[0].ts) : NaN);
+    if (!isNaN(aT) && !isNaN(bT) && aT !== bT) return aT - bT;
+    const aOrder = typeof a.order === 'number' ? a.order : 0;
+    const bOrder = typeof b.order === 'number' ? b.order : 0;
+    return aOrder - bOrder;
+  });
+
+  const count = Math.max(1, sortedStages.length);
+  const slotDuration = durationMin / count;
+
+  let maxT1 = 0;
+  clone.stages = sortedStages.map((s, idx) => {
+    const sStart = parseTs(s.start) || (s.evidence?.[0]?.ts ? parseTs(s.evidence[0].ts) : NaN);
+    const sEnd = parseTs(s.end) || (s.evidence?.at(-1)?.ts ? parseTs(s.evidence.at(-1).ts) : NaN);
+
+    let t0, t1;
+    if (hasRealTimestamps && !isNaN(sStart)) {
+      t0 = Math.max(0, (sStart - startMs) / 60000);
+      if (!isNaN(sEnd) && sEnd > sStart) {
+        t1 = Math.max(t0 + 0.2, (sEnd - startMs) / 60000);
+      } else {
+        t1 = t0 + Math.max(0.5, Math.min(2.0, slotDuration));
+      }
+    } else {
+      t0 = idx * slotDuration;
+      t1 = Math.min(durationMin, (idx + 1) * slotDuration);
+      if (t1 <= t0) t1 = t0 + Math.max(0.2, slotDuration * 0.5);
+    }
+
+    if (t1 > maxT1) maxT1 = t1;
+    return { ...s, t0, t1 };
+  });
+
+  if (maxT1 > durationMin) {
+    durationMin = maxT1;
+  }
+  clone.durationMin = durationMin;
+  return clone;
+}
+
+export function findInitialAttacker(inc) {
+  if (!inc) return null;
+  const hosts = Array.isArray(inc.hosts) ? inc.hosts : [];
+  const stages = Array.isArray(inc.stages) ? inc.stages : [];
+
+  // 1. Host with explicit attacker / adversary / threat role from incident evidence
+  const roleHost = hosts.find(h => /attacker|adversary|threat/i.test(h.role || ''));
+  if (roleHost) return roleHost;
+
+  // 2. Direct match on host id 'ATK' or starting with 'ATK'
+  const atkHost = hosts.find(h => h.id === 'ATK' || /^ATK\b/i.test(h.id));
+  if (atkHost) return atkHost;
+
+  // 3. Infrastructure role
+  const infraHost = hosts.find(h => /infrastructure/i.test(h.role || ''));
+  if (infraHost) return infraHost;
+
+  // 4. Source of the initial chronological attack stage
+  const s0 = stages[0];
+  if (s0 && s0.src) {
+    const srcHost = hosts.find(h => h.id === s0.src || h.ip === s0.src);
+    if (srcHost) return srcHost;
+    return { id: s0.src, ip: s0.src, role: 'Attacker origin', zone: 'EXTERNAL' };
+  }
+
+  // 5. Any external zone host
+  const extHost = hosts.find(h => h.zone === 'EXTERNAL');
+  if (extHost) return extHost;
+
+  // 6. Safe fallback
+  return null;
+}

@@ -7,7 +7,8 @@ export const clockAt = (startIso, minutes) => {
   const parsed = Date.parse(startIso);
   if (isNaN(parsed)) return '';
   try {
-    return new Date(parsed + Number(minutes) * 60000).toISOString().slice(11, 19) + ' UTC';
+    const d = new Date(parsed + Number(minutes) * 60000);
+    return d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST';
   } catch {
     return '';
   }
