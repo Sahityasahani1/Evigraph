@@ -123,14 +123,19 @@ class AutoencoderDetector:
         val_losses = self._compute_reconstruction_errors(X_val_scaled)
         y_val_binary = (y_val != "BENIGN").astype(int).values
 
-        # Set 99.5th percentile of benign validation error as sharp baseline cut
+        # Set 99.0th percentile of benign validation error as sharp baseline cut
         benign_val_mask = (y_val == "BENIGN").values
         if benign_val_mask.any():
-            self.baseline_mse_threshold = float(np.percentile(val_losses[benign_val_mask], 99.5))
+            benign_losses = val_losses[benign_val_mask]
+            self.baseline_mse_threshold = float(np.percentile(benign_losses, 99.0))
+            self.baseline_mse_median = float(np.median(benign_losses))
+            self.baseline_mse_scale = max(1e-4, float(self.baseline_mse_threshold - self.baseline_mse_median))
         else:
             self.baseline_mse_threshold = float(np.median(val_losses))
+            self.baseline_mse_median = self.baseline_mse_threshold
+            self.baseline_mse_scale = max(1e-4, float(np.std(val_losses)))
 
-        # Platt scaling calibrator on log(1 + MSE)
+        # Platt scaling calibrator on log(1 + MSE) if supervised validation labels available
         log_mse = np.log1p(val_losses).reshape(-1, 1)
         if len(np.unique(y_val_binary)) > 1:
             self.calibrator = LogisticRegression(C=1.0, max_iter=200)
@@ -138,7 +143,8 @@ class AutoencoderDetector:
             val_risk = self.calibrator.predict_proba(log_mse)[:, 1]
         else:
             self.calibrator = None
-            val_risk = np.clip(val_losses / (self.baseline_mse_threshold * 2.0), 0.0, 1.0)
+            z_val = (val_losses - self.baseline_mse_threshold) / self.baseline_mse_scale
+            val_risk = 1.0 / (1.0 + np.exp(-np.clip(z_val, -10.0, 10.0)))
 
         print(f"[Autoencoder] Baseline Benign 99th-Percentile Cutoff: {self.baseline_mse_threshold:.4f}")
         return {
@@ -178,7 +184,9 @@ class AutoencoderDetector:
             log_mse = np.log1p(mse_errors).reshape(-1, 1)
             risk_scores = self.calibrator.predict_proba(log_mse)[:, 1]
         else:
-            risk_scores = np.clip(mse_errors / (self.baseline_mse_threshold * 2.0), 0.0, 1.0)
+            scale = getattr(self, "baseline_mse_scale", max(1e-4, self.baseline_mse_threshold))
+            z_score = (mse_errors - self.baseline_mse_threshold) / scale
+            risk_scores = 1.0 / (1.0 + np.exp(-np.clip(z_score, -10.0, 10.0)))
             
         scored_df = meta_df.copy()
         scored_df["autoencoder_raw_mse"] = np.round(mse_errors, 5)

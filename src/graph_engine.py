@@ -66,17 +66,21 @@ class HostGraphEngine:
         self.graph.add_edges_from(edge_list)
 
         # 2. Vectorized Host (Node) Behavioral Metrics via pandas groupby (0.1s instead of O(N) loop)
+        # In bidirectional flows: fwd_bytes are sent by src_ip and received by dst_ip;
+        # bwd_bytes are sent by dst_ip and received by src_ip.
         out_agg = flows_df.groupby("src_ip").agg(
             out_degree=("dst_ip", "count"),
             fan_out=("dst_ip", "nunique"),
             unique_dst_ports=("dst_port", "nunique") if "dst_port" in flows_df.columns else ("dst_ip", "nunique"),
-            bytes_out=(fwd_col, "sum") if fwd_col else ("dst_ip", "count"),
+            fwd_bytes_sent=(fwd_col, "sum") if fwd_col else ("dst_ip", "count"),
+            bwd_bytes_recv=(bwd_col, "sum") if bwd_col else ("dst_ip", "count"),
             alerts_sent=("is_alert", "sum") if "is_alert" in flows_df.columns else ("dst_ip", "count")
         )
         in_agg = flows_df.groupby("dst_ip").agg(
             in_degree=("src_ip", "count"),
             fan_in=("src_ip", "nunique"),
-            bytes_in=(bwd_col, "sum") if bwd_col else ("src_ip", "count"),
+            fwd_bytes_recv=(fwd_col, "sum") if fwd_col else ("src_ip", "count"),
+            bwd_bytes_sent=(bwd_col, "sum") if bwd_col else ("src_ip", "count"),
             alerts_received=("is_alert", "sum") if "is_alert" in flows_df.columns else ("src_ip", "count")
         )
 
@@ -86,13 +90,16 @@ class HostGraphEngine:
         for node in self.graph.nodes():
             o = out_dict.get(node, {})
             i = in_dict.get(node, {})
+            total_bytes_out = float(o.get("fwd_bytes_sent", 0.0) + i.get("bwd_bytes_sent", 0.0))
+            total_bytes_in = float(i.get("fwd_bytes_recv", 0.0) + o.get("bwd_bytes_recv", 0.0))
+
             self.graph.nodes[node]["in_degree"] = int(i.get("in_degree", 0))
             self.graph.nodes[node]["out_degree"] = int(o.get("out_degree", 0))
             self.graph.nodes[node]["fan_out"] = int(o.get("fan_out", 0))
             self.graph.nodes[node]["fan_in"] = int(i.get("fan_in", 0))
             self.graph.nodes[node]["port_diversity"] = int(o.get("unique_dst_ports", 0))
-            self.graph.nodes[node]["bytes_out"] = float(o.get("bytes_out", 0.0))
-            self.graph.nodes[node]["bytes_in"] = float(i.get("bytes_in", 0.0))
+            self.graph.nodes[node]["bytes_out"] = total_bytes_out
+            self.graph.nodes[node]["bytes_in"] = total_bytes_in
             self.graph.nodes[node]["alerts_sent"] = int(o.get("alerts_sent", 0))
             self.graph.nodes[node]["alerts_received"] = int(i.get("alerts_received", 0))
 

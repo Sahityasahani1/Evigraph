@@ -113,6 +113,7 @@ class CourtroomCrossExaminer:
         self.merkle_proofs_by_id: Dict[str, Dict[str, Any]] = {}
         self.causal_chains_by_incident: Dict[str, List[Dict[str, Any]]] = {}
         self.session_merkle_root: str = ""
+        self.root_signature_status: str = "NO_CERTIFICATE"
 
         self.load_data()
 
@@ -152,6 +153,7 @@ class CourtroomCrossExaminer:
             with open(self.merkle_cert_path, "r", encoding="utf-8") as f:
                 self.merkle_data = json.load(f)
             self.session_merkle_root = self.merkle_data.get("session_merkle_root", "")
+            self.root_signature_status = MerkleEvidenceEngine.verify_root_signature(self.merkle_data)
             proofs_map = self.merkle_data.get("incident_evidence_proofs", {})
             for inc_id, proofs_list in proofs_map.items():
                 for proof in proofs_list:
@@ -174,6 +176,17 @@ class CourtroomCrossExaminer:
         objections = []
         verified_count = 0
 
+        # Fail closed: without a certified session root there is nothing to
+        # verify against. A proof must never be allowed to certify itself.
+        if not self.session_merkle_root:
+            objections.append({
+                "gate": "Gate 1 (Cryptographic Admissibility)",
+                "type": "OBJECTION_NO_CERTIFIED_ROOT",
+                "status": "SUSTAINED",
+                "reason": "No certified session Merkle root was loaded; cryptographic admissibility cannot be established.",
+            })
+            return 0.0, objections
+
         for fid in citations:
             proof = self.merkle_proofs_by_id.get(fid)
             if not proof:
@@ -186,39 +199,60 @@ class CourtroomCrossExaminer:
                 })
                 continue
 
-            claimed_root = proof.get("root_hash", "")
-            leaf_hash = proof.get("leaf_hash", "")
-            proof_steps = proof.get("proof_steps", [])
-
-            # Reconstruct parent hashes up to root
-            current_hash = leaf_hash
-            for step in proof_steps:
-                sibling = step["sibling_hash"]
-                pos = step["position"]
-                if pos == "left":
-                    combined = hashlib.sha256((sibling + current_hash).encode("utf-8")).hexdigest()
-                else:
-                    combined = hashlib.sha256((current_hash + sibling).encode("utf-8")).hexdigest()
-                current_hash = combined
-
-            expected_root = self.session_merkle_root or claimed_root
-            if current_hash.lower() == expected_root.lower():
-                verified_count += 1
-                objections.append({
-                    "gate": "Gate 1 (Cryptographic Admissibility)",
-                    "type": "CHALLENGE_MERKLE_ROOT_CONFORMANCE",
-                    "status": "OVERRULED",
-                    "flow_id": fid,
-                    "reason": f"Mathematical audit path verified: recomputed root '{current_hash[:16]}...' matches certified root."
-                })
-            else:
+            # Recompute the audit path against the certified root, honouring the
+            # proof's scheme (v2 domain-separated or legacy).
+            if not MerkleEvidenceEngine.verify_audit_path(
+                proof, self.session_merkle_root, require_expected_root=True
+            ):
                 objections.append({
                     "gate": "Gate 1 (Cryptographic Admissibility)",
                     "type": "OBJECTION_CRYPTOGRAPHIC_TAMPERING",
                     "status": "SUSTAINED",
                     "flow_id": fid,
-                    "reason": f"Cryptographic tamper detected: recomputed hash '{current_hash}' != certified root '{expected_root}'."
+                    "reason": (
+                        f"Audit path for '{fid}' does not recompute to the certified "
+                        f"session root '{self.session_merkle_root}'."
+                    ),
                 })
+                continue
+
+            # Bind the proof to the telemetry row that the report actually cites.
+            # A missing leaf hash is a failure: otherwise a valid proof for some
+            # other record could be accepted for this citation.
+            evidence_leaf = self.evidence_by_id.get(fid, {}).get("merkle_leaf_hash")
+            if not evidence_leaf:
+                objections.append({
+                    "gate": "Gate 1 (Cryptographic Admissibility)",
+                    "type": "OBJECTION_EVIDENCE_LEAF_MISSING",
+                    "status": "SUSTAINED",
+                    "flow_id": fid,
+                    "reason": (
+                        f"Telemetry row for '{fid}' has no Merkle leaf binding, so the "
+                        f"proof cannot be tied to the cited evidence."
+                    ),
+                })
+                continue
+            if evidence_leaf != proof.get("leaf_hash"):
+                objections.append({
+                    "gate": "Gate 1 (Cryptographic Admissibility)",
+                    "type": "OBJECTION_EVIDENCE_LEAF_MISMATCH",
+                    "status": "SUSTAINED",
+                    "flow_id": fid,
+                    "reason": (
+                        f"Proof leaf '{str(proof.get('leaf_hash'))[:16]}...' does not match the "
+                        f"telemetry row leaf '{str(evidence_leaf)[:16]}...'."
+                    ),
+                })
+                continue
+
+            verified_count += 1
+            objections.append({
+                "gate": "Gate 1 (Cryptographic Admissibility)",
+                "type": "CHALLENGE_MERKLE_ROOT_CONFORMANCE",
+                "status": "OVERRULED",
+                "flow_id": fid,
+                "reason": "Mathematical audit path verified against the certified session root.",
+            })
 
         total = max(1, len(citations))
         score = verified_count / total
@@ -331,7 +365,18 @@ class CourtroomCrossExaminer:
                     t_next = None
 
                 # 1. Temporal Monotonicity Check (Lamport causality: t_next >= t_curr)
-                if t_curr and t_next and t_next < t_curr:
+                if not t_curr or not t_next:
+                    objections.append({
+                        "gate": "Gate 3 (Temporal Causal Provenance)",
+                        "type": "OBJECTION_UNPARSEABLE_TIMESTAMP",
+                        "status": "SUSTAINED",
+                        "incident_id": inc_id,
+                        "step": f"{idx+1} -> {idx+2}",
+                        "reason": "Causal transition carries a missing or unparseable timestamp; monotonicity cannot be established."
+                    })
+                    continue
+
+                if t_next < t_curr:
                     delta = (t_curr - t_next).total_seconds()
                     objections.append({
                         "gate": "Gate 3 (Temporal Causal Provenance)",
@@ -385,7 +430,15 @@ class CourtroomCrossExaminer:
                     })
 
         total = max(1, total_checks)
-        score = passed_checks / total if total_checks > 0 else 1.0
+        if total_checks == 0:
+            objections.append({
+                "gate": "Gate 3 (Temporal Causal Provenance)",
+                "type": "OBJECTION_NO_CAUSAL_CHAIN",
+                "status": "SUSTAINED",
+                "reason": "No causal attack chain was available; temporal provenance cannot be certified.",
+            })
+            return 0.0, objections
+        score = passed_checks / total
         return score, objections
 
     def cross_examine_gate4_fact_checking(
@@ -482,18 +535,24 @@ class CourtroomCrossExaminer:
                         "reason": f"Adverse claim is grounded with authentic evidence citation: '{cleaned[:65]}...'"
                     })
                 else:
-                    # Allow executive high-level summary overview if followed by evidence
-                    if "executive summary" in cleaned.lower() or "mitre attack" in cleaned.lower() or "investigation" in cleaned.lower():
-                        fact_checks_passed += 1
-                    else:
-                        objections.append({
-                            "gate": "Gate 4 (Quantitative Fact-Checking)",
-                            "type": "OBJECTION_UNCITED_FACTUAL_ASSERTION",
-                            "status": "SUSTAINED",
-                            "reason": f"Statement alleges adverse action without citing immutable flow: '{cleaned[:75]}...'"
-                        })
+                    # No exemption: an adverse claim must cite a flow, even in
+                    # an executive summary.
+                    objections.append({
+                        "gate": "Gate 4 (Quantitative Fact-Checking)",
+                        "type": "OBJECTION_UNCITED_FACTUAL_ASSERTION",
+                        "status": "SUSTAINED",
+                        "reason": f"Statement alleges adverse action without citing immutable flow: '{cleaned[:75]}...'"
+                    })
 
         total = max(1, fact_checks_total)
+        if fact_checks_total == 0:
+            objections.append({
+                "gate": "Gate 4 (Quantitative Fact-Checking)",
+                "type": "OBJECTION_NO_FACT_CHECKS",
+                "status": "SUSTAINED",
+                "reason": "The report contained no machine-checkable factual claims; telemetry fidelity cannot be certified.",
+            })
+            return 0.0, objections
         score = fact_checks_passed / total
         return score, objections
 
@@ -531,35 +590,73 @@ class CourtroomCrossExaminer:
         sustained = [o for o in all_objections if o.get("status") == "SUSTAINED"]
         overruled = [o for o in all_objections if o.get("status") == "OVERRULED"]
 
-        # Admissibility Verdict
-        if admissibility_score >= 0.95 and len(sustained) == 0:
+        # Admissibility Verdict. Certification requires positive evidence in
+        # every gate; absence of evidence is never treated as compliance.
+        has_evidence = len(unique_citations) > 0
+        all_gates_pass = all(
+            g >= threshold
+            for g, threshold in (
+                (g1_score, 0.95),
+                (g2_score, 0.95),
+                (g3_score, 0.95),
+                (g4_score, 0.90),
+            )
+        )
+        if has_evidence and admissibility_score >= 0.95 and len(sustained) == 0 and all_gates_pass:
             verdict = "ADMISSIBLE_IN_COURT"
             verdict_description = (
-                "Flawless forensic validity. All claims are backed by RFC-6962 Merkle inclusion proofs, "
-                "physically valid Layer-4 protocols, monotonic causal DAG transitions, and verified telemetry."
+                "All checked claims are backed by replayed Merkle audit paths, "
+                "protocol-feasible telemetry, monotonic causal transitions, and "
+                "cited quantitative facts. This is a technical certification, "
+                "not legal advice or a court ruling."
             )
-        elif admissibility_score >= 0.80:
+        elif has_evidence and admissibility_score >= 0.80:
             verdict = "CONDITIONALLY_ADMISSIBLE"
             verdict_description = (
-                "High evidentiary value. Core causal and cryptographic chain is established, "
-                "with minor procedural caveats or uncited commentary noted."
+                "High evidentiary value with procedural caveats. Review the "
+                "sustained objections before relying on the report."
             )
         else:
             verdict = "INADMISSIBLE"
             verdict_description = (
-                "Evidentiary failure. Severe flaws detected including missing cryptographic proofs, "
-                "retrograde causality, or Layer-4 protocol impossibilities."
+                "Evidentiary failure. Missing/invalid cryptographic proofs, "
+                "retrograde causality, protocol impossibilities, or uncited "
+                "adverse claims were detected."
             )
 
         verdict_package = {
-            "version": "1.0",
+            "version": "2.0",
             "auditor": "EviGraph Adversarial Courtroom Cross-Examiner (Defense Agent)",
             "standard": "FRE 902(13)/(14) & ISO/IEC 27037 Digital Forensic Admissibility",
             "evaluated_at": datetime.now(timezone.utc).isoformat(),
             "verdict": verdict,
             "admissibility_score": round(admissibility_score, 4),
             "verdict_description": verdict_description,
+            "certification_scope": {
+                "scope": "session",
+                "incident_ids": sorted(
+                    inc.get("incident_id")
+                    for inc in self.incidents_data.get("incidents", [])
+                    if inc.get("incident_id")
+                ),
+                "claims_audited": len(unique_citations),
+                "gates_evaluated": 4,
+                "all_gates_passed": all_gates_pass,
+                "note": (
+                    "Scores are evidence-coverage ratios, not probabilities of "
+                    "truth. A 100% score means every cited item passed this "
+                    "pipeline's checks, not that every real-world event was "
+                    "captured."
+                ),
+            },
+            "limitations": [
+                "Merkle proofs establish that a telemetry row existed in the capture, not that the capture was complete or truthful at collection time.",
+                "Layer-4 constraints are heuristic; non-standard ports are warnings, not proof of impossibility.",
+                "Causal ordering is derived from flow timestamps and may inherit clock skew or capture-time errors.",
+                "The auditor cannot validate source authenticity without a signed, externally anchored root and trusted collection attestation.",
+            ],
             "session_merkle_root": self.session_merkle_root,
+            "root_signature_status": self.root_signature_status,
             "gate_scores": {
                 "gate1_cryptographic_merkle": round(g1_score, 4),
                 "gate2_protocol_feasibility": round(g2_score, 4),

@@ -69,17 +69,28 @@ class IncidentClusterEngine:
             host_to_alerts[s].append((fid, ts))
             host_to_alerts[d].append((fid, ts))
 
+        import bisect
+
         for host, host_alerts in host_to_alerts.items():
             host_alerts.sort(key=lambda x: x[1])
             m = len(host_alerts)
+            if m <= 1:
+                continue
+
+            ts_seconds = [t.timestamp() for _, t in host_alerts]
+            fids = [fid for fid, _ in host_alerts]
+
             for i in range(m):
-                f1, t1 = host_alerts[i]
-                for j in range(i + 1, min(i + 30, m)):  # Temporal neighbor window
-                    f2, t2 = host_alerts[j]
-                    time_delta = (t2 - t1).total_seconds()
-                    if time_delta > self.time_threshold_secs:
-                        break
+                f1 = fids[i]
+                t1_sec = ts_seconds[i]
+                max_t = t1_sec + float(self.time_threshold_secs)
+
+                # Locate all alerts for this host within the temporal window using binary search
+                end_idx = bisect.bisect_right(ts_seconds, max_t, lo=i + 1)
+                for j in range(i + 1, end_idx):
+                    f2 = fids[j]
                     if f1 != f2:
+                        time_delta = ts_seconds[j] - t1_sec
                         weight = 1.0 / (1.0 + time_delta / 60.0)
                         self.alert_graph.add_edge(f1, f2, weight=weight)
 

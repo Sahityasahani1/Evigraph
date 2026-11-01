@@ -73,7 +73,7 @@ class CitationValidator:
         """
         citations = self.CITATION_REGEX.findall(report_text)
         total_citations = len(citations)
-        
+
         verified_citations = []
         hallucinated_citations = []
 
@@ -87,18 +87,35 @@ class CitationValidator:
         unique_verified = set(verified_citations)
         unique_hallucinated = set(hallucinated_citations)
 
+        # Faithfulness is computed over UNIQUE citations. Counting repeated
+        # citations would let a model inflate its score by citing one real flow
+        # hundreds of times while hallucinating elsewhere.
+        unique_total = len(unique_citations)
         faithfulness = (
-            (len(verified_citations) / total_citations * 100.0) 
+            (len(unique_verified) / unique_total * 100.0)
+            if unique_total > 0 else 0.0
+        )
+        occurrence_faithfulness = (
+            (len(verified_citations) / total_citations * 100.0)
             if total_citations > 0 else 0.0
         )
+        duplicate_citations = total_citations - unique_total
+        inflation_ratio = (
+            round(total_citations / unique_total, 2) if unique_total else 0.0
+        )
 
-        passed = faithfulness >= 95.0 and total_citations > 0
+        passed = faithfulness >= 95.0 and unique_total > 0
 
         result = {
             "total_citations": total_citations,
-            "unique_citations_count": len(unique_citations),
+            "unique_citations_count": unique_total,
             "verified_count": len(verified_citations),
             "hallucinated_count": len(hallucinated_citations),
+            "unique_verified_count": len(unique_verified),
+            "duplicate_citations_count": duplicate_citations,
+            "citation_inflation_ratio": inflation_ratio,
+            "unique_faithfulness_pct": round(faithfulness, 2),
+            "occurrence_faithfulness_pct": round(occurrence_faithfulness, 2),
             "citation_faithfulness_pct": round(faithfulness, 2),
             "passed_threshold": passed,
             "verified_flow_ids": list(unique_verified),
@@ -116,9 +133,11 @@ class CitationValidator:
             f"Status                   : {status}",
             f"Total Evidence Citations : {result['total_citations']}",
             f"Unique Citations         : {result['unique_citations_count']}",
+            f"Duplicate Citations      : {result.get('duplicate_citations_count', 0)}",
+            f"Inflation Ratio          : {result.get('citation_inflation_ratio', 1.0)}x",
             f"Verified Evidence Flows  : {result['verified_count']}",
             f"Hallucinated Flow IDs    : {result['hallucinated_count']}",
-            f"Faithfulness Score       : {result['citation_faithfulness_pct']}% (Target: >= 95%)",
+            f"Faithfulness (unique)    : {result['citation_faithfulness_pct']}% (Target: >= 95%)",
             "=" * 60
         ]
         if result["hallucinated_flow_ids"]:

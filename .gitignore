@@ -43,7 +43,18 @@ models/*.joblib
 *.log
 outputs/*.json
 outputs/*.md
+outputs/*.secret
 !outputs/.gitkeep
+
+# Secrets / local environment
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+!*.env.example
+!.env.server.example
+*.pem
+*.key
 
 # IDE and OS
 .vscode/

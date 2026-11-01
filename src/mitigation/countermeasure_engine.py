@@ -18,7 +18,9 @@ Core USP: Bridges Detection and Forensic Investigation to Active Zero-Downtime R
 
 import os
 import sys
+import re
 import json
+import ipaddress
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List, Set, Any, Optional, Tuple
@@ -146,9 +148,27 @@ class CountermeasureEngine:
         """
         Compiles actionable firewall commands across Linux iptables/nftables,
         Windows Defender PowerShell, Cisco ACL, and Cloud Security Groups.
+
+        All values are validated before interpolation. Telemetry is attacker
+        controlled; an unvalidated host string here would become command
+        injection in a copy-pasted firewall script.
         """
-        proto_l = protocol.lower()
-        proto_u = protocol.upper()
+        try:
+            attacker_ip = str(ipaddress.ip_address(str(attacker_ip).strip()))
+            victim_ip = str(ipaddress.ip_address(str(victim_ip).strip()))
+        except ValueError as exc:
+            raise ValueError("Invalid IP address supplied to remediation generator") from exc
+
+        if not isinstance(port, int) or isinstance(port, bool) or not (1 <= port <= 65535):
+            raise ValueError("Invalid destination port supplied to remediation generator")
+
+        if not re.match(r"^[A-Za-z0-9_-]{1,80}$", str(rule_id)):
+            raise ValueError("Invalid rule_id supplied to remediation generator")
+
+        proto_u = str(protocol).upper()
+        if proto_u not in ("TCP", "UDP"):
+            raise ValueError("Only TCP/UDP remediation rules are supported")
+        proto_l = proto_u.lower()
 
         if action_type == "HOST_ISOLATE":
             # Complete isolation of compromised leaf node
@@ -252,14 +272,19 @@ class CountermeasureEngine:
                     tier = "Tier 1: Surgical L4 Drop"
                     reason = f"Severing communication on port {port} halts {stage} transition."
 
-                commands = self.synthesize_remediation_commands(
-                    rule_id=rule_id,
-                    attacker_ip=src,
-                    victim_ip=dst,
-                    port=port,
-                    protocol=proto,
-                    action_type=action_type
-                )
+                try:
+                    commands = self.synthesize_remediation_commands(
+                        rule_id=rule_id,
+                        attacker_ip=src,
+                        victim_ip=dst,
+                        port=port,
+                        protocol=proto,
+                        action_type=action_type
+                    )
+                    deployable, validation_status = True, "VALIDATED"
+                except ValueError as exc:
+                    commands = {}
+                    deployable, validation_status = False, f"REJECTED_INVALID_TARGET: {exc}"
 
                 plan_actions.append({
                     "rule_id": rule_id,
@@ -270,6 +295,11 @@ class CountermeasureEngine:
                     "destination_port": port,
                     "protocol": proto,
                     "rationale": reason,
+                    "deployable": deployable,
+                    "validation_status": validation_status,
+                    "execution_mode": "ADVISORY_ONLY",
+                    "execution_authorized": False,
+                    "requires_human_approval": True,
                     "victim_blast_radius": victim_blast,
                     "synthesized_commands": commands
                 })
@@ -283,9 +313,14 @@ class CountermeasureEngine:
                 port = e.get("dst_port", 80)
                 proto = PROTOCOL_NAMES.get(e.get("protocol", 6), "TCP")
                 victim_blast = self.compute_blast_radius(dst, target_port=port)
-                commands = self.synthesize_remediation_commands(
-                    rule_id=rule_id, attacker_ip=src, victim_ip=dst, port=port, protocol=proto
-                )
+                try:
+                    commands = self.synthesize_remediation_commands(
+                        rule_id=rule_id, attacker_ip=src, victim_ip=dst, port=port, protocol=proto
+                    )
+                    deployable, validation_status = True, "VALIDATED"
+                except ValueError as exc:
+                    commands = {}
+                    deployable, validation_status = False, f"REJECTED_INVALID_TARGET: {exc}"
                 plan_actions.append({
                     "rule_id": rule_id,
                     "action_tier": "Tier 1: Fallback Surgical Ingress Drop",
@@ -295,6 +330,11 @@ class CountermeasureEngine:
                     "destination_port": port,
                     "protocol": proto,
                     "rationale": f"Blocks initial ingress alert flow from {src} to {dst}:{port}.",
+                    "deployable": deployable,
+                    "validation_status": validation_status,
+                    "execution_mode": "ADVISORY_ONLY",
+                    "execution_authorized": False,
+                    "requires_human_approval": True,
                     "victim_blast_radius": victim_blast,
                     "synthesized_commands": commands
                 })
@@ -305,7 +345,17 @@ class CountermeasureEngine:
             "severity_score": incident.get("incident_score", 0.5),
             "attack_classes": incident.get("attack_classes", []),
             "containment_actions_count": len(plan_actions),
-            "actions": plan_actions
+            "actions": plan_actions,
+            "execution_policy": {
+                "mode": "ADVISORY_ONLY",
+                "auto_execution_supported": False,
+                "requires_human_approval": True,
+                "instructions": (
+                    "Review and syntax-check every rule in a staging environment. "
+                    "Confirm the host/port inventory, obtain change approval, and "
+                    "prepare a rollback before applying any command."
+                ),
+            },
         }
 
     def generate_containment_plan(self) -> Dict[str, Any]:
@@ -319,10 +369,16 @@ class CountermeasureEngine:
             total_actions += len(i_plan.get("actions", []))
 
         plan_package = {
-            "version": "1.0",
-            "generator": "EviGraph Autonomous Surgical Containment Engine",
+            "version": "2.0",
+            "generator": "EviGraph Surgical Containment Engine (advisory)",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "strategy": "Min-Cut Graph Bottleneck & Zero-Downtime Blast-Radius Optimization",
+            "execution_policy": {
+                "mode": "ADVISORY_ONLY",
+                "auto_execution_supported": False,
+                "requires_human_approval": True,
+                "note": "No rule in this package is applied automatically.",
+            },
             "total_incidents_analyzed": len(incident_plans),
             "total_containment_rules_synthesized": total_actions,
             "incident_plans": incident_plans

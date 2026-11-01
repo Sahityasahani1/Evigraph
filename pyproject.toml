@@ -30,6 +30,22 @@ dev = [
     "pytest>=8.0.0",
     "hypothesis>=6.100.0",
     "ruff>=0.9.0",
+    "httpx>=0.28.0",
+]
+ml = [
+    "numpy>=2.0.0",
+    "scikit-learn>=1.5.0",
+    "xgboost>=3.0.0",
+    "joblib>=1.4.0",
+    "torch>=2.4.0",
+    "networkx>=3.3.0",
+]
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+]
+agent = [
+    "ollama>=0.4.0",
 ]
 
 [project.scripts]
@@ -38,7 +54,7 @@ data-cli = "data.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["data*"]
+include = ["data*", "src*", "api*"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

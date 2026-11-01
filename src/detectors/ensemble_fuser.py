@@ -52,26 +52,39 @@ class EnsembleFuser:
         print("   3. Native Histogram Gradient Boosting (Dual-Tree Diversity)")
         print("=" * 65)
 
+        # Split the validation window: the first half is used by the base
+        # detectors for early stopping/calibration; the second half is strictly
+        # out-of-sample for the stacking meta-learner. Fitting the meta-learner
+        # on rows the base models already saw inflates validation metrics.
+        n_val = len(X_val)
+        if n_val >= 200:
+            cal_end = int(n_val * 0.5)
+            X_fit, y_fit = X_val.iloc[:cal_end], y_val.iloc[:cal_end]
+            X_meta, y_meta = X_val.iloc[cal_end:], y_val.iloc[cal_end:]
+        else:
+            X_fit, y_fit = X_val, y_val
+            X_meta, y_meta = X_val, y_val
+
         # 1. Train Pillar 1: XGBoost Detector
         print("\n>>> [Pillar 1/3] Training Supervised Multi-Class XGBoost...")
-        self.xgb_detector.train(X_train, y_train, X_val, y_val)
+        self.xgb_detector.train(X_train, y_train, X_fit, y_fit)
         self.feature_columns = self.xgb_detector.feature_columns
 
         # 2. Train Pillar 2: Unsupervised PyTorch Autoencoder
         print("\n>>> [Pillar 2/3] Training Deep PyTorch Autoencoder on Benign Baseline...")
-        self.ae_detector.train(X_train, y_train, X_val, y_val, epochs=15)
+        self.ae_detector.train(X_train, y_train, X_fit, y_fit, epochs=15)
 
         # 3. Train Pillar 3: Scikit-Learn Native HistGradientBoosting
         print("\n>>> [Pillar 3/3] Training Native Histogram Gradient Boosting...")
-        self.hgb_detector.train(X_train, y_train, X_val, y_val)
+        self.hgb_detector.train(X_train, y_train, X_fit, y_fit)
 
-        # 4. Generate Validation Predictions for Meta-Learner Stacking
-        print("\n>>> [Meta-Learner] Constructing Stacking Feature Space on Validation Split...")
-        val_meta = pd.DataFrame({"label": y_val}, index=X_val.index)
+        # 4. Generate out-of-sample Validation Predictions for Meta-Learner Stacking
+        print("\n>>> [Meta-Learner] Constructing Stacking Feature Space on held-out validation split...")
+        val_meta = pd.DataFrame({"label": y_meta}, index=X_meta.index)
         
-        xgb_val = self.xgb_detector.score_flows(X_val, val_meta)
-        ae_val = self.ae_detector.score_flows(X_val, val_meta)
-        hgb_val = self.hgb_detector.score_flows(X_val, val_meta)
+        xgb_val = self.xgb_detector.score_flows(X_meta, val_meta)
+        ae_val = self.ae_detector.score_flows(X_meta, val_meta)
+        hgb_val = self.hgb_detector.score_flows(X_meta, val_meta)
 
         r_xgb = xgb_val["risk_score"].values
         r_ae = ae_val["risk_score"].values
@@ -81,25 +94,39 @@ class EnsembleFuser:
         min_tree = np.minimum(r_xgb, r_hgb)
         tree_diff = np.abs(r_xgb - r_hgb)
         Z_val = np.column_stack([r_xgb, r_ae, r_hgb, max_tree, min_tree, tree_diff])
-        y_val_binary = (y_val != "BENIGN").astype(int).values
+        y_val_binary = (y_meta != "BENIGN").astype(int).values
 
-        # 5. Fit Stacking Logistic Regression Meta-Learner
-        self.meta_learner.fit(Z_val, y_val_binary)
+        # 5. Fit Stacking Logistic Regression Meta-Learner with Out-of-Sample Threshold Partitioning
+        # To avoid resubstitution bias, partition Z_val into stacking fit vs threshold tuning slices
+        n_val = len(Z_val)
+        if n_val >= 100:
+            split_idx = int(n_val * 0.70)
+            Z_fit, y_fit = Z_val[:split_idx], y_val_binary[:split_idx]
+            Z_tune, y_tune = Z_val[split_idx:], y_val_binary[split_idx:]
+        else:
+            Z_fit, y_fit = Z_val, y_val_binary
+            Z_tune, y_tune = Z_val, y_val_binary
+
+        self.meta_learner.fit(Z_fit, y_fit)
+        fused_tune_risk = self.meta_learner.predict_proba(Z_tune)[:, 1]
         fused_val_risk = self.meta_learner.predict_proba(Z_val)[:, 1]
 
         weights = self.meta_learner.coef_[0]
         intercept = self.meta_learner.intercept_[0]
         print(f"[Meta-Learner] Stacking Weights: XGB={weights[0]:.3f}, AE={weights[1]:.3f}, HistGB={weights[2]:.3f}, MaxTree={weights[3]:.3f}, Diff={weights[5]:.3f} (Intercept={intercept:.3f})")
 
-        # 6. Optimize Fused Threshold (Sweep up to 0.95 for precision)
+        # 6. Optimize Fused Threshold on out-of-fit validation slice
         best_f1, best_th = 0.0, ALERT_RISK_THRESHOLD
-        for th in np.linspace(0.20, 0.95, 31):
-            pred_b = (fused_val_risk >= th).astype(int)
-            _, _, f1, _ = precision_recall_fscore_support(y_val_binary, pred_b, average="binary", zero_division=0)
-            if f1 > best_f1:
-                best_f1 = f1
-                best_th = th
-        self.optimal_threshold = round(float(best_th), 3)
+        if np.sum(y_tune) > 0 and np.sum(y_tune) < len(y_tune):
+            for th in np.linspace(0.20, 0.95, 31):
+                pred_b = (fused_tune_risk >= th).astype(int)
+                _, _, f1, _ = precision_recall_fscore_support(y_tune, pred_b, average="binary", zero_division=0)
+                if f1 > best_f1:
+                    best_f1 = f1
+                    best_th = th
+            self.optimal_threshold = round(float(best_th), 3)
+        else:
+            self.optimal_threshold = ALERT_RISK_THRESHOLD
 
         p, r, f1, _ = precision_recall_fscore_support(
             y_val_binary, (fused_val_risk >= self.optimal_threshold).astype(int), average="binary", zero_division=0

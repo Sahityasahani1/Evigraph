@@ -77,17 +77,17 @@ This repository houses the complete **Member 2 Detection & Graph Engine**, featu
    * RFC-6962 binary SHA-256 Merkle tree hashing every raw NetFlow record into tamper-evident cryptographically signed leaf digests.
    * Produces $O(\log N)$ sibling audit inclusion proofs and exports verifiable certificate `outputs/forensic_merkle_certificate.json`.
 9. **Temporal Causal Provenance DAG (`src/causal_provenance.py` — Core USP):**
-   * Computes a Lamport-ordered strictly monotonic causal directed acyclic graph ($t_1 < t_2$) filtering physically impossible backwards-in-time attacks.
+   * Computes a Lamport-ordered causal directed acyclic graph ($t_1 < t_2$) and flags retrograde (backwards-in-time) sequences as objections rather than treating them as physical proof.
    * Enforces a 6-stage MITRE ATT&CK progression FSM and dynamic programming topological longest-path to extract the exact Primary Attack Chain.
 10. **Dual-Agent Adversarial Courtroom Cross-Examiner (`src/agent/courtroom_auditor.py` — Core USP):**
    * Ruthless automated defense auditor that cross-examines the forensic report across 4 independent gates: Cryptographic Merkle Proofs, Physical Layer-4 Protocols, Temporal Causal Monotonicity, and Telemetry Fact-Checking.
-   * Issues certified verdict (`outputs/certified_forensic_verdict.json`) adhering to Federal Rules of Evidence FRE 902(13)/(14) and ISO/IEC 27037 digital forensic admissibility.
+   * Issues a technical admissibility audit (`outputs/certified_forensic_verdict.json`) with explicit scope and limitations. It is not legal advice or a court ruling.
 11. **Autonomous Surgical Containment & Blast-Radius Engine (`src/mitigation/countermeasure_engine.py` — Core USP):**
    * Bridges detection to active zero-downtime containment using Min-Cut bottleneck analysis on the Causal DAG.
    * Computes operational Blast-Radius impact scores and compiles multi-platform firewall rules (Linux iptables/nftables, Windows PowerShell, Cisco ACL, Cloud SG).
 12. **Privacy-Preserving Redacted Proof Engine (`src/integrity/privacy_proofs.py` — Core USP):**
    * SEC Item 1.05 & GDPR Art. 33 compliant intrusion disclosure using Salted HMAC Commitments.
-   * Enables third-party auditors and insurers to mathematically verify intrusion existence against the Merkle Root with 0% internal IP or subnet topology leakage.
+   * Enables third-party auditors and insurers to verify intrusion existence against the Merkle Root while topology/service fields are hidden behind salted HMAC commitments. This is a commitment scheme, not zero-knowledge; confidentiality depends on key custody (`outputs/privacy_disclosure_key.secret`, never shipped).
 13. **Counterfactual "What-If" Resilience Simulator (`src/simulation/counterfactual_engine.py` — Core USP):**
    * Perturbs Causal DAGs to evaluate hypothetical security controls (port blocks, microsegmentation, perimeter drop).
    * Calculates the Defensive Resilience Index (DRI) and identifies architectural Single Points of Failure (SPOF).
@@ -123,13 +123,15 @@ This repository houses the complete **Member 2 Detection & Graph Engine**, featu
 ├── outputs/
 │   ├── incident_cases.json         # Inter-agent handoff case bundle (Member 2 -> Member 3)
 │   ├── forensic_incident_report.md # Generated forensic investigation report (Member 3)
-│   ├── citation_validation_results.json # Verification results ensuring zero hallucination
-│   ├── forensic_merkle_certificate.json # Cryptographic Merkle Root and RFC-6962 audit paths
-│   ├── certified_forensic_verdict.json # Adversarial judicial verdict (FRE 902 / ISO 27037)
+│   ├── citation_validation_results.json # Unique-citation faithfulness & hallucination metrics
+│   ├── forensic_merkle_certificate.json # Domain-separated Merkle root and audit paths
+│   ├── certified_forensic_verdict.json # Technical admissibility audit (not legal advice)
 │   ├── courtroom_cross_examination.md # Detailed adversarial cross-examination transcript
 │   ├── countermeasure_plan.json    # Machine-readable containment playbook (Min-Cut)
-│   ├── incident_containment_advisory.md # Multi-platform firewall deployment advisory
-│   ├── privacy_preserving_proof_certificate.json # Redacted Zero-Leakage intrusion certificate
+│   ├── incident_containment_advisory.md # Multi-platform firewall deployment advisory (human approval required)
+│   ├── privacy_preserving_proof_certificate.json # Redacted intrusion commitment certificate
+│   ├── privacy_disclosure_key.secret # Key custody file (gitignored; never ship)
+│   ├── run_manifest.json           # Input/model/output hashes, git state, library versions
 │   ├── counterfactual_simulation_results.json # What-If resilience simulation matrix
 │   └── resilience_simulation_report.md # Architectural resilience & SPOF analysis report
 ├── tests/
@@ -184,12 +186,15 @@ This repository houses the complete **Member 2 Detection & Graph Engine**, featu
 ## 5. Quickstart Guide
 
 ### 1. Environment Setup
-Verify you have Python 3.11+ installed. Install the dependencies:
+Verify you have Python 3.11+ installed. Install the package with the ML/API extras:
 ```bash
-pip install pandas numpy scikit-learn xgboost networkx pyarrow huggingface_hub
-# Optional for PyTorch Autoencoder and PyG GNN:
-pip install torch torch_geometric
+pip install -e ".[ml,api,agent,dev]"
+# Optional graph neural network support:
+pip install torch_geometric
 ```
+
+### 1b. Security configuration
+Copy `.env.server.example` to `.env` and set `EVIGRAPH_API_KEY` for any non-loopback deployment. The API refuses to bind `0.0.0.0` without a key, serves only files under `dist/`, and never fabricates a verdict when evidence is missing. See [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md) and [`SECURITY.md`](SECURITY.md).
 
 ### 2. Run Immediate Pipeline (Default: Tri-Pillar Ensemble)
 Run the complete pipeline on the local multi-stage sample fixture using the ensemble:
@@ -229,6 +234,7 @@ python main.py --data all
 
 # 3. Run on external benchmark suite (APT-C2, DDoS2019, UNSW-NB15):
 python main.py --data new_benchmark
+```
 
 ### 5. Run Member 3 Forensic Agent & Citation-Validated Reporting
 To run the complete pipeline and immediately invoke the downstream reasoning agent:
@@ -246,7 +252,7 @@ To independently cross-examine and audit a forensic report against Merkle proofs
 ```bash
 python -m src.agent.courtroom_auditor
 ```
-This generates `outputs/courtroom_cross_examination.md` with FRE 902(13)/(14) & ISO/IEC 27037 legal admissibility certification.
+This generates `outputs/courtroom_cross_examination.md` with a technical admissibility audit against FRE 902(13)/(14) and ISO/IEC 27037 concepts. The output is engineering evidence, not a legal ruling.
 
 ### 7. Run Autonomous Surgical Containment & Blast-Radius Engine (USP)
 To synthesize zero-downtime, multi-platform firewall containment rules (Linux iptables/nftables, Windows PowerShell, Cisco ACL) via Min-Cut bottleneck analysis:
@@ -256,11 +262,11 @@ python -m src.mitigation.countermeasure_engine
 This generates `outputs/countermeasure_plan.json` and `outputs/incident_containment_advisory.md`.
 
 ### 8. Run Privacy-Preserving Redacted Proof Engine (USP)
-To compile zero-topology-leakage intrusion certificates with Salted HMAC Commitments under SEC Item 1.05 & GDPR Art. 33:
+To compile privacy-preserving intrusion certificates with salted HMAC commitments under SEC Item 1.05 & GDPR Art. 33:
 ```bash
 python -m src.integrity.privacy_proofs
 ```
-This generates `outputs/privacy_preserving_proof_certificate.json`.
+This generates `outputs/privacy_preserving_proof_certificate.json` (distributable) and `outputs/privacy_disclosure_key.secret` (local key custody; never ship).
 
 ### 9. Run Counterfactual "What-If" Resilience Simulator (USP)
 To simulate hypothetical defense policies (port blocking, host quarantine, stage filtering) and calculate the Defensive Resilience Index (DRI):

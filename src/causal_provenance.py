@@ -95,6 +95,11 @@ class CausalProvenanceEngine:
         r1 = STAGE_RANKS.get(stage_from, 1)
         r2 = STAGE_RANKS.get(stage_to, 1)
 
+        # Lateral movement loops: when an adversary pivots to a new host,
+        # executing Reconnaissance or Credential Access is expected behavior.
+        if stage_from == "Lateral Movement" and stage_to in ("Reconnaissance", "Credential Access", "Initial Access"):
+            return 0.85
+
         if r1 < r2:
             # Forward campaign progression
             return 1.00
@@ -102,11 +107,11 @@ class CausalProvenanceEngine:
             # Lateral expansion within same tactical phase
             return 0.85
         elif r1 == r2 + 1:
-            # Minor tactical fallback (e.g. pivoting host scans new internal subnet)
-            return 0.65
+            # Minor tactical fallback
+            return 0.70
         else:
             # Distant regression
-            return 0.45
+            return 0.50
 
     def build_causal_dag(self, alert_edges: List[Dict[str, Any]]) -> nx.DiGraph:
         """
@@ -160,8 +165,9 @@ class CausalProvenanceEngine:
             u_ts = parse_ts(u_alert.get("timestamp", 0))
             u_stage = self.classify_stage(u_alert.get("predicted_class", ""))
 
-            # Lookahead window (restricted to prevent combinatorial explosion)
-            for j in range(i + 1, min(i + 40, n)):
+            # Lookahead window bounded by max temporal horizon
+            max_horizon = max(self.max_scan_window_secs, self.max_dwell_time_secs)
+            for j in range(i + 1, min(i + 150, n)):
                 v_alert = sorted_alerts[j]
                 v_id = str(v_alert.get("edge_id", f"flw_{j}"))
                 v_src = str(v_alert.get("source"))
@@ -171,8 +177,11 @@ class CausalProvenanceEngine:
                 v_risk = float(v_alert.get("risk_score", 0.5))
 
                 dt = v_ts - u_ts
-                if dt < 0:
-                    continue  # Strict Lamport arrow of time
+                if dt < 0 or (dt == 0 and u_id >= v_id):
+                    continue  # Strict total Lamport ordering guarantees a true DAG (zero cycles)
+
+                if dt > max_horizon:
+                    break  # Chronologically sorted, no later alert will be within window
 
                 is_continuation = (u_src == v_src) and (dt <= self.max_scan_window_secs)
                 is_pivot = (u_dst == v_src) and (self.min_dwell_time_secs <= dt <= self.max_dwell_time_secs)
@@ -239,12 +248,16 @@ class CausalProvenanceEngine:
         # Find termination node with highest cumulative confidence
         best_end = max(dist.keys(), key=lambda n: dist[n])
         
-        # Backtrack path
+        # Backtrack path with cycle-detection guard to prevent infinite loops
         path = []
         curr = best_end
+        visited = set()
         while curr is not None:
+            if curr in visited:
+                break
+            visited.add(curr)
             path.append(curr)
-            curr = pred[curr]
+            curr = pred.get(curr)
         path.reverse()
 
         # Format chain sequence

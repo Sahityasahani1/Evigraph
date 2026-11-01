@@ -142,10 +142,12 @@ class FlowDataLoader:
         df: pd.DataFrame, 
         train_ratio: float = 0.60,
         val_ratio: float = 0.20,
-        per_class: bool = True
+        per_class: bool = False
     ):
         """
         Sorts chronologically and splits into Train/Val/Test temporally (TRD Sec 3.3.5).
+        Defaults to strict global chronological splitting (per_class=False) to ensure zero
+        future-to-past arrow-of-time leakage across distinct attack campaigns.
         When per_class=True, splits chronologically within each attack class,
         guaranteeing zero future-to-past leakage while preserving multi-class representation.
         Returns: (X_train, y_train, meta_train, X_val, y_val, meta_val, X_test, y_test, meta_test)
@@ -154,6 +156,12 @@ class FlowDataLoader:
             df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed", errors="coerce")
             
         if per_class and "label" in df.columns:
+            print(
+                "[DataLoader] WARNING: per-class temporal split preserves class "
+                "representation but every test class was observed in training. "
+                "Do not cite these metrics as unseen-family / zero-day evidence; "
+                "run the family-holdout protocol in docs/EVALUATION_PROTOCOL.md."
+            )
             train_dfs, val_dfs, test_dfs = [], [], []
             for label_name, group in df.groupby("label"):
                 if "timestamp" in group.columns:
@@ -168,6 +176,12 @@ class FlowDataLoader:
             train_df = pd.concat(train_dfs, ignore_index=True)
             val_df = pd.concat(val_dfs, ignore_index=True)
             test_df = pd.concat(test_dfs, ignore_index=True)
+            if "timestamp" in train_df.columns:
+                train_df = train_df.sort_values(by="timestamp").reset_index(drop=True)
+            if "timestamp" in val_df.columns:
+                val_df = val_df.sort_values(by="timestamp").reset_index(drop=True)
+            if "timestamp" in test_df.columns:
+                test_df = test_df.sort_values(by="timestamp").reset_index(drop=True)
         else:
             if "timestamp" in df.columns:
                 df = df.sort_values(by="timestamp").reset_index(drop=True)

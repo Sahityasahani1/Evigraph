@@ -45,7 +45,16 @@ def run_pipeline(
         raw_df = loader.load_dataset(data_path, max_rows=max_rows)
         
     X_train, y_train, meta_train, X_val, y_val, meta_val, X_test, y_test, meta_test = loader.prepare_temporal_split(
-        raw_df, train_ratio=0.60, val_ratio=0.20
+        raw_df, train_ratio=0.60, val_ratio=0.20, per_class=True
+    )
+
+    # 1.5 Leakage audit: report overlaps and forbidden-feature usage explicitly.
+    from src.integrity.leakage_audit import write_leakage_audit
+    write_leakage_audit(
+        meta_train,
+        meta_val,
+        meta_test,
+        feature_columns=[],
     )
     
     # 2. Train Detector (Ensemble, XGBoost, Autoencoder, HistGB, or GNN)
@@ -103,7 +112,68 @@ def run_pipeline(
                 print(f"   * ROC-AUC   : {roc_auc:.4f}")
             except Exception:
                 pass
-    
+
+        # Calibration + uncertainty (flow-level bootstrap, reported honestly).
+        y_true_arr = np.asarray(y_true_binary).astype(int)
+        y_prob_arr = np.asarray(scored_test_df["risk_score"]).astype(float)
+        y_pred_arr = np.asarray(y_pred_binary).astype(int)
+        brier = float(np.mean((y_prob_arr - y_true_arr) ** 2))
+        # Expected calibration error (10 bins).
+        bins = np.linspace(0.0, 1.0, 11)
+        ece = 0.0
+        for i in range(len(bins) - 1):
+            lo, hi = bins[i], bins[i + 1]
+            mask = (y_prob_arr >= lo) & (y_prob_arr < hi) if i < len(bins) - 2 else (y_prob_arr >= lo) & (y_prob_arr <= hi)
+            if mask.sum() == 0:
+                continue
+            acc = y_true_arr[mask].mean()
+            conf = y_prob_arr[mask].mean()
+            ece += (mask.sum() / len(y_true_arr)) * abs(acc - conf)
+
+        rng = np.random.default_rng(42)
+        boot_f1 = []
+        boot_recall = []
+        n = len(y_true_arr)
+        for _ in range(300):
+            idx = rng.integers(0, n, size=n)
+            yt = y_true_arr[idx]
+            yp = y_pred_arr[idx]
+            if len(np.unique(yt)) < 2:
+                continue
+            pp, rr, ff, _ = precision_recall_fscore_support(yt, yp, average="binary", zero_division=0)
+            boot_f1.append(ff)
+            boot_recall.append(rr)
+        ci = {
+            "f1_95ci": [float(np.percentile(boot_f1, 2.5)), float(np.percentile(boot_f1, 97.5))] if boot_f1 else [None, None],
+            "recall_95ci": [float(np.percentile(boot_recall, 2.5)), float(np.percentile(boot_recall, 97.5))] if boot_recall else [None, None],
+            "bootstrap_samples": len(boot_f1),
+        }
+        f1_ci_str = f"[{ci['f1_95ci'][0]:.4f}, {ci['f1_95ci'][1]:.4f}]" if ci['f1_95ci'][0] is not None else "[N/A, N/A]"
+        rec_ci_str = f"[{ci['recall_95ci'][0]:.4f}, {ci['recall_95ci'][1]:.4f}]" if ci['recall_95ci'][0] is not None else "[N/A, N/A]"
+        print(f"   * Brier     : {brier:.4f}")
+        print(f"   * ECE       : {ece:.4f}")
+        print(f"   * F1 95% CI : {f1_ci_str}")
+        print(f"   * Recall CI : {rec_ci_str}")
+
+        import json as _json
+        metrics_path = OUTPUTS_DIR / "evaluation_metrics.json"
+        with metrics_path.open("w", encoding="utf-8") as handle:
+            _json.dump(
+                {
+                    "precision": float(p),
+                    "recall": float(r),
+                    "f1": float(f1),
+                    "pr_auc": float(pr_auc) if "pr_auc" in locals() else None,
+                    "roc_auc": float(roc_auc) if "roc_auc" in locals() else None,
+                    "brier": brier,
+                    "ece": float(ece),
+                    "bootstrap": ci,
+                    "note": "Flow-level bootstrap only; host/campaign cluster bootstrap is still required for incident claims.",
+                },
+                handle,
+                indent=2,
+            )
+        print(f"[Evaluation] Metrics written to: {metrics_path}")    
     # 4. Host Graph Construction
     print("\n--- Building Host Communication Graph ---")
     graph_engine = HostGraphEngine()
@@ -173,6 +243,17 @@ def run_pipeline(
         from src.simulation.counterfactual_engine import CounterfactualResilienceSimulator
         sim_engine = CounterfactualResilienceSimulator(incident_cases_path=output_file)
         sim_engine.run()
+
+    # 11. Reproducibility manifest: bind inputs, models, and outputs to this run.
+    from src.integrity.run_manifest import write_run_manifest
+    write_run_manifest(
+        data_path=Path(data_path) if data_path else None,
+        raw_rows=len(raw_df),
+        raw_columns=len(raw_df.columns),
+        model_type=model_type,
+        run_agent=run_agent,
+        split_protocol="per_class_temporal",
+    )
 
     return output_file
 

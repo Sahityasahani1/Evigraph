@@ -135,7 +135,23 @@ class CounterfactualResilienceSimulator:
                 perturbed_dag.remove_node(target_fid)
                 removed_elements.append(target_fid)
 
-        # 3. Recalculate attack chain through perturbed DAG
+        # 3. Forward Reachability Pruning:
+        # Downstream internal flows cannot occur without a reachable path from a legitimate entry point.
+        base_entry_nodes = {n for n, deg in base_dag.in_degree() if deg == 0}
+        surviving_entry_nodes = base_entry_nodes.intersection(perturbed_dag.nodes())
+
+        if surviving_entry_nodes:
+            reachable = set()
+            for en in surviving_entry_nodes:
+                reachable.add(en)
+                reachable.update(nx.descendants(perturbed_dag, en))
+            orphaned = set(perturbed_dag.nodes()) - reachable
+            perturbed_dag.remove_nodes_from(orphaned)
+        else:
+            # All entry points were severed by the intervention: campaign is extinguished!
+            perturbed_dag.clear()
+
+        # 4. Recalculate attack chain through reachable residual DAG
         residual_chain = self.causal_engine.extract_primary_attack_chain(perturbed_dag)
         residual_severity = self.calculate_chain_severity(residual_chain)
 

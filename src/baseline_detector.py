@@ -83,6 +83,21 @@ class BaselineDetector:
             X_val_clean = X_v[val_mask]
             y_val_encoded = self.label_encoder.transform(y_val[val_mask])
 
+        # Split the validation window into three disjoint roles. Using the same
+        # rows for early stopping, Platt calibration, and threshold tuning
+        # produces optimistically biased calibration and thresholds.
+        n_val = len(X_val_clean)
+        if n_val >= 60:
+            es_end = int(n_val * 0.6)
+            cal_end = int(n_val * 0.8)
+            X_es, y_es = X_val_clean.iloc[:es_end], y_val_encoded[:es_end]
+            X_cal, y_cal = X_val_clean.iloc[es_end:cal_end], y_val_encoded[es_end:cal_end]
+            X_thr, y_thr = X_val_clean.iloc[cal_end:], y_val_encoded[cal_end:]
+        else:
+            X_es, y_es = X_val_clean, y_val_encoded
+            X_cal, y_cal = X_val_clean, y_val_encoded
+            X_thr, y_thr = X_val_clean, y_val_encoded
+
         # 4. Balanced sample weights
         classes, counts = np.unique(y_train_encoded, return_counts=True)
         total_samples = len(y_train_encoded)
@@ -121,53 +136,67 @@ class BaselineDetector:
             early_stopping_rounds=early_stopping_rounds
         )
 
-        # 6. Fit with early stopping
+        # 6. Fit with early stopping on the dedicated early-stopping slice
         self.base_model.fit(
             X_tr, 
             y_train_encoded, 
             sample_weight=sample_weights,
-            eval_set=[(X_val_clean, y_val_encoded)],
+            eval_set=[(X_es, y_es)],
             verbose=False
         )
         best_iter = getattr(self.base_model, "best_iteration", 300)
         print(f"[Detector] Early stopping triggered at iteration {best_iter}")
 
         # 7. Platt Scaling Probability Calibration (TRD Sec 3.3.1)
+        # Calibrator is fit on a slice that was NOT used for early stopping.
         print("[Detector] Calibrating Risk Scores via Platt Scaling...")
-        val_probs_raw = self.base_model.predict_proba(X_val_clean)
-        val_preds = np.argmax(val_probs_raw, axis=1)
 
-        if "BENIGN" in self.classes_:
-            benign_idx = self.classes_.index("BENIGN")
-            val_raw_risk = 1.0 - val_probs_raw[:, benign_idx]
-            y_val_binary = (y_val_encoded != benign_idx).astype(int)
-        else:
-            val_raw_risk = np.max(val_probs_raw, axis=1)
-            y_val_binary = (y_val_encoded > 0).astype(int)
+        def _binary_risk(probs: np.ndarray, y_enc: np.ndarray):
+            if "BENIGN" in self.classes_:
+                benign_idx = self.classes_.index("BENIGN")
+                return 1.0 - probs[:, benign_idx], (y_enc != benign_idx).astype(int)
+            return np.max(probs, axis=1), (y_enc > 0).astype(int)
 
-        if len(np.unique(y_val_binary)) > 1:
+        cal_probs = self.base_model.predict_proba(X_cal)
+        cal_raw_risk, cal_binary = _binary_risk(cal_probs, y_cal)
+
+        if len(np.unique(cal_binary)) > 1:
             self.calibrator = LogisticRegression(C=1.0, max_iter=200)
-            self.calibrator.fit(val_raw_risk.reshape(-1, 1), y_val_binary)
-            val_calibrated_risk = self.calibrator.predict_proba(val_raw_risk.reshape(-1, 1))[:, 1]
+            self.calibrator.fit(cal_raw_risk.reshape(-1, 1), cal_binary)
         else:
             self.calibrator = None
-            val_calibrated_risk = val_raw_risk
 
-        # 8. Threshold Optimization
-        if np.sum(y_val_binary) > 0 and np.sum(y_val_binary) < len(y_val_binary):
+        thr_probs = self.base_model.predict_proba(X_thr)
+        thr_raw_risk, thr_binary = _binary_risk(thr_probs, y_thr)
+        thr_calibrated_risk = (
+            self.calibrator.predict_proba(thr_raw_risk.reshape(-1, 1))[:, 1]
+            if self.calibrator is not None else thr_raw_risk
+        )
+
+        # 8. Threshold Optimization on a held-out threshold slice
+        if np.sum(thr_binary) > 0 and np.sum(thr_binary) < len(thr_binary):
             best_f1, best_th = 0.0, ALERT_RISK_THRESHOLD
             for th in np.linspace(0.20, 0.85, 27):
-                pred_binary = (val_calibrated_risk >= th).astype(int)
+                pred_binary = (thr_calibrated_risk >= th).astype(int)
                 _, _, f1, _ = precision_recall_fscore_support(
-                    y_val_binary, pred_binary, average="binary", zero_division=0
+                    thr_binary, pred_binary, average="binary", zero_division=0
                 )
                 if f1 > best_f1:
                     best_f1 = f1
                     best_th = th
             self.optimal_threshold = round(float(best_th), 3)
-            print(f"[Detector] Optimized Risk Alert Threshold: {self.optimal_threshold} (Validation F1={best_f1:.4f})")
+            print(f"[Detector] Optimized Risk Alert Threshold: {self.optimal_threshold} (Held-out F1={best_f1:.4f})")
         else:
             self.optimal_threshold = ALERT_RISK_THRESHOLD
+
+        # Full validation predictions for the classification report.
+        val_probs_raw = self.base_model.predict_proba(X_val_clean)
+        val_preds = np.argmax(val_probs_raw, axis=1)
+        val_raw_risk, y_val_binary = _binary_risk(val_probs_raw, y_val_encoded)
+        val_calibrated_risk = (
+            self.calibrator.predict_proba(val_raw_risk.reshape(-1, 1))[:, 1]
+            if self.calibrator is not None else val_raw_risk
+        )
 
         # 9. Performance reporting
         report = classification_report(

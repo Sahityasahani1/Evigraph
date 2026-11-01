@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --evi-bg-canvas: #0b1120;
+  --evi-bg-panel: #111827;
+  --evi-bg-elevated: #1f2937;
+  --evi-border-subtle: #243044;
+  --evi-text-primary: #e5edf8;
+  --evi-text-secondary: #94a3b8;
+  --evi-accent: #22d3ee;
+  --evi-benign: #38bdf8;
+  --evi-suspicious: #f59e0b;
+  --evi-malicious: #ef4444;
+  --evi-verified: #22c55e;
+  --evi-failed: #f43f5e;
+  --evi-simulation: #a78bfa;
+}
+
+body {
+  background-color: var(--evi-bg-canvas);
+  color: var(--evi-text-primary);
+  font-family: Inter, "IBM Plex Sans", system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Monospace formatting for forensic IDs */
+.font-mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Custom SOC scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b1120;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #243044;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Pulse animation for high risk indicators */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
