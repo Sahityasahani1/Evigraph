@@ -40,7 +40,7 @@ export class NetworkScene {
     this.onSelect = onSelect; this.onHover = onHover;
     this.opt = { benign: true, packets: true, rotate: true, follow: true };
     this.t = 0; this.sel = null; this.nodes = {}; this.edges = {}; this.pickables = []; this.labels = {}; this.status = {};
-    this.cam = { th: 0.7, ph: 1.2, rad: 38 }; this.tgt = HOME.clone(); this.goal = HOME.clone(); this.goalRad = null;
+    this.cam = { th: 0.7, ph: 1.2, rad: 24 }; this.tgt = HOME.clone(); this.goal = HOME.clone(); this.goalRad = null;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -143,7 +143,8 @@ export class NetworkScene {
   }
 
   _hover(e) {
-    this.raycaster.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), this.camera);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.raycaster.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1), this.camera);
     const u = this.raycaster.intersectObjects(this.pickables)[0]?.object.userData;
     const hidden = u?.stage && this.t < (this.edges[u.stage]?.stage.t0 ?? 0);
     this.onHover(!u || hidden ? null : u.host ? { host: u.host } : { stage: u.stage }, e.clientX, e.clientY);
@@ -160,13 +161,21 @@ export class NetworkScene {
     c.onwheel = e => { this.goalRad = null; this.cam.rad = Math.max(12, Math.min(70, this.cam.rad + e.deltaY * 0.03)); e.preventDefault(); };
     c.onpointerup = e => {
       drag = null; this.dragging = false; if (moved > 5) return;
-      this.raycaster.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), this.camera);
+      const rect = this.renderer.domElement.getBoundingClientRect();
+    this.raycaster.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1), this.camera);
       const hit = this.raycaster.intersectObjects(this.pickables)[0]; if (!hit) { this.onSelect(null); return; }
       const u = hit.object.userData; this.onSelect(u.host ? { host: u.host } : { stage: u.stage });
     };
   }
 
-  _resize() { this.renderer.setSize(innerWidth, innerHeight); this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); }
+  _resize() {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width || this.renderer.domElement.clientWidth || 640));
+    const h = Math.max(1, Math.floor(rect.height || this.renderer.domElement.clientHeight || 360));
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  }
 
   _loop(n) {
     const dt = Math.min((n - this.last) / 1000, 0.1); this.last = n;
@@ -182,11 +191,15 @@ export class NetworkScene {
         e.packets.forEach((p, i) => { p.visible = this.opt.benign && this.opt.packets; p.position.copy(e.curve.getPoint((n / 4000 + i / 2) % 1)); });
         continue;
       }
-      const s = e.stage, active = t >= s.t0 && t <= s.t1, seen = t >= s.t0, picked = sel?.stage === id;
-      e.line.material.opacity = active ? 1 : seen ? (picked ? 0.9 : 0.4) : (picked ? 0.5 : 0.03);
+      const s = e.stage;
+      const active = Number.isFinite(s?.t0) && Number.isFinite(s?.t1) ? (t >= s.t0 && t <= s.t1) : true;
+      const seen = Number.isFinite(s?.t0) ? t >= s.t0 : true;
+      const picked = sel?.stage === id;
+      e.line.material.opacity = active ? 1 : seen ? (picked ? 0.9 : 0.25) : (picked ? 0.4 : 0.02);
       e.packets.forEach((p, i) => {
-        p.visible = active && this.opt.packets; p.scale.setScalar(picked ? 1.6 : 1);
-        if (active) p.position.copy(e.curve.getPoint((n / 1500 + i / e.packets.length) % 1));
+        p.visible = active && this.opt.packets;
+        p.scale.setScalar(picked ? 2.0 : 1.4);
+        if (active) p.position.copy(e.curve.getPoint((n / 600 + i / Math.max(1, e.packets.length)) % 1));
       });
     }
     for (const [id, m] of Object.entries(this.nodes)) {

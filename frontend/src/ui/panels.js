@@ -9,6 +9,8 @@ const host = (inc, id) => inc.hosts.find(h => h.id === id);
 const ip = (inc, id) => esc(host(inc, id)?.ip ?? id);
 const seen = o => `<span class="chip2 ${o ? 'ok' : 'warn'}" data-tip="observed">${icon(o ? 'eye' : 'bulb', 12)}${o ? 'Seen' : 'Likely'}</span>`;
 const conf = c => `<span class="chip2 c-${confWord(c).toLowerCase()}" data-tip="confidence"><span class="beg">${confWord(c)} confidence</span><span class="ana">${c.toFixed(2)} · ${confWord(c)}</span></span>`;
+const interpretation = s => s.interpretation_status === 'inferred'
+  ? '<span class="chip2 warn">Inferred stage</span>' : '';
 const stChip = (id, s) => `<span class="st st-${s}" data-tip="status" style="--s:${STATUS[s].col}">${STATUS[s].label}</span>`;
 const route = (inc, s) => `${icon(roleIcon(host(inc, s.src)), 14)} ${ip(inc, s.src)} <span class="arrow">→</span> ${icon(roleIcon(host(inc, s.dst)), 14)} ${ip(inc, s.dst)}${s.port ? `:${esc(s.port)}` : ''}`;
 
@@ -27,7 +29,7 @@ export const chainHtml = inc => `<h4 data-tip="chain">The story, step by step</h
       <div class="ctitle"><span class="num">${String(i + 1).padStart(2, '0')}</span><b class="beg">${p.title}</b><b class="ana">${esc(s.tactic)}</b></div>
       <div class="mu cwhat"><span class="beg">${p.what}</span><span class="ana">${esc(s.tactic_id)} · ${p.title}</span></div>
       <div class="croute">${route(inc, s)}</div>
-      <div class="cmeta">${seen(s.observed)}${conf(s.confidence)}</div>
+      <div class="cmeta">${seen(s.observed)}${interpretation(s)}${conf(s.confidence)}</div>
     </div></div>`;
 }).join('') : '<div class="mu" style="padding:8px 0">No attack steps recorded.</div>') + '</div>';
 
@@ -53,7 +55,7 @@ export function overviewHtml(inc, t) {
   <p class="mu fine">Click a machine, a connection or a story card to open its proof. Click empty space to return here.</p>`;
 }
 
-const receipt = (s, e) => `<div class="receipt"><div class="rh"><span class="tag" data-stage="${esc(s.stage_id)}">${esc(e.flow_id)}</span><span class="mu">${esc((e.ts || '').slice(11, 19))} UTC</span></div>
+const receipt = (s, e) => `<div class="receipt"><div class="rh"><span class="tag" data-stage="${esc(s.stage_id)}" data-evidence="${esc(e.flow_id)}">${esc(e.flow_id)}</span><span class="mu">${esc((e.ts || '').slice(11, 19))} UTC</span></div>
   <div class="rf"><span data-tip="hash">Fingerprint</span> ${e.pcap_sha256 ? `<code>${esc(e.pcap_sha256.slice(0, 16))}…</code>` : '<span class="mu">not recorded</span>'}
   ${e.pcap_sha256 ? `<button class="mini" data-copy="${esc(e.pcap_sha256)}">${icon('copy', 12)} Copy</button>` : ''}</div></div>`;
 
@@ -65,10 +67,12 @@ export function detailHtml(inc, sel, t) {
       <div class="mu"><span class="beg">Step ${s.order}</span><span class="ana">${esc(s.tactic_id)}</span></div>
       <h3><span class="beg">${p.title}</span><span class="ana">${esc(s.tactic)}</span></h3></div></div>
     <div class="routebig">${route(inc, s)}</div>
-    <div class="cmeta">${seen(s.observed)}${conf(s.confidence)}</div>
+    <div class="cmeta">${seen(s.observed)}${interpretation(s)}${conf(s.confidence)}</div>
     <h4>What this means</h4><p>${p.what}</p>
     <h4>What we saw</h4><p>${esc(s.summary)}.</p>
-    <p class="mu fine">${s.observed ? 'Seen: found directly in the captured traffic.' : 'Likely: deduced from patterns. A person should confirm it.'}</p>
+    <p class="mu fine">${s.interpretation_status === 'inferred'
+      ? 'The cited flow is observed; its detector class, attack-stage mapping, and temporal relationship are inferred and should be reviewed.'
+      : s.observed ? 'Seen: found directly in the captured traffic.' : 'Likely: deduced from patterns. A person should confirm it.'}</p>
     <h4 data-tip="explain">Why the system flagged it</h4>` +
       ((s.explanation && s.explanation.length)
         ? s.explanation.map(w => `<div class="why">${esc(w.feature)}<div class="bar"><i style="width:${(w.weight ?? 0) * 100}%;background:${col}"></i></div></div>`).join('')
@@ -99,9 +103,40 @@ export function reportHtml(inc, r) {
   const summaryText = r.summary || (r.summary_withheld_reason ? `(Summary withheld: ${r.summary_withheld_reason})` : r.factual_summary);
   const summaryBlock = summaryText ? `<div class="card" style="margin:8px 0;padding:10px;border-left:3px solid var(--ac)"><b>${r.summary ? 'Executive Summary (verified)' : 'Summary'}</b><p style="margin:4px 0 0 0">${esc(summaryText)}</p></div>` : '';
 
+  const attackMatches = Object.entries(r.attack_matches || {}).map(([stage, result]) => {
+    const data = Array.isArray(result) ? { status: 'demo', matches: result } : (result || {});
+    if (data.status === 'unavailable' || data.retrieval_status === 'unavailable') {
+      return `<p class="rs"><b>${esc(stage)}</b> · ATT&amp;CK retrieval unavailable: ${esc(data.error || 'index or embedding service unavailable')}</p>`;
+    }
+    if (!data.matches?.length) {
+      return `<p class="rs"><b>${esc(stage)}</b> · No technique match; mapping unsupported.</p>`;
+    }
+    return data.matches.map(match => {
+      const inferred = match.mapping_status === 'inferred';
+      const demo = data.status === 'demo' || match.mapping_status === 'demo';
+      const source = typeof match.source_url === 'string' && match.source_url.startsWith('https://')
+        ? ` · <a href="${esc(match.source_url)}" target="_blank" rel="noopener noreferrer">ATT&amp;CK source</a>` : '';
+      const evidence = (match.evidence_flow_ids || []).map(id => `[E:${esc(id)}]`).join(' ');
+      const evidenceIds = (match.evidence_ids || []).map(esc).join(', ');
+      const score = Number.isFinite(Number(match.score)) ? ` · relevance ${Number(match.score).toFixed(3)}` : '';
+      const label = inferred ? 'Inferred candidate · not confirmed' : demo ? 'Demo candidate · not verified' : 'Unsupported mapping';
+      return `<p class="rs"><b>${esc(stage)}</b> · <span class="chip2 ${inferred || demo ? 'warn' : 'mu'}">${label}</span> ` +
+        `<b>${esc(match.id)} ${esc(match.name)}</b>${score}${source}` +
+        `${evidence ? `<br><span class="mu fine">Evidence: ${evidence}</span>` : ''}` +
+        `${evidenceIds ? `<br><span class="mu fine">Evidence sources: ${evidenceIds}</span>` : ''}` +
+        `${match.assessment ? `<br><span class="mu fine">${esc(match.assessment)}</span>` : ''}</p>`;
+    }).join('');
+  }).join('');
+  const attackBlock = `<div class="attack-mappings"><h5>ATT&amp;CK retrieval · candidates are not confirmation</h5>` +
+    (attackMatches || '<p class="rs mu">No ATT&amp;CK mapping data returned.</p>') +
+    `<p class="mu fine">Retrieval scores show text relevance only. Each inferred candidate must be reviewed against its linked flow evidence.</p></div>`;
+  const reasoningBlock = r.reasoning_status === 'degraded'
+    ? `<p class="rs"><span class="chip2 warn">Deterministic report</span> LLM reasoning unavailable; no generated findings are claimed.${r.reasoning_error ? ` ${esc(r.reasoning_error)}` : ''}</p>`
+    : '';
+
   const sentencesHtml = (r.sentences || []).map((x, i) => {
     const s = stageOf(x.stage_id);
-    const tags = (x.evidence_ids || []).map(id => `<span class="tag" data-stage="${esc(x.stage_id || '')}">[E:${esc(id)}]</span>`).join(' ');
+    const tags = (x.evidence_ids || []).map(id => `<span class="tag" data-stage="${esc(x.stage_id || '')}" data-evidence="${esc(id)}">[E:${esc(id)}]</span>`).join(' ');
     return `<p class="rs"><span class="num">${String(i + 1).padStart(2, '0')}</span> ${s ? `<span class="mu">${esc(clockAt(inc.start, s.t0).slice(0, 8))}</span> ` : ''}${esc(x.text)}${tags ? ` ${tags}` : ''}</p>`;
   }).join('');
 
@@ -120,6 +155,7 @@ export function reportHtml(inc, r) {
   <div class="report-actions" style="display:flex;gap:8px;margin:10px 0 12px 0;">
     <button class="sm on" data-download="json" data-tip="download_json">${icon('download', 14)} Download JSON</button>
     <button class="sm on" data-download="md" data-tip="download_md">${icon('download', 14)} Download Markdown</button>
+    <button class="sm on" data-download="pdf" data-tip="download_pdf">${icon('download', 14)} Download PDF</button>
   </div>`;
 
   return `<h4 data-tip="v_report">Incident report · ${esc(r.incident_id)}</h4>
@@ -129,6 +165,8 @@ export function reportHtml(inc, r) {
   ${downloadToolbar}
   <p class="mu fine">Every sentence cites evidence. Click a tag to open its proof.</p>` +
     summaryBlock +
+    attackBlock +
+    reasoningBlock +
     sentencesHtml +
     rejectedHtml +
     `<div class="mu fine">Input fingerprint <code>${esc(fp)}…</code> · run <code>${esc(manifest)}</code> · ATT&amp;CK ${esc(atk)}</div>`;

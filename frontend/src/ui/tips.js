@@ -23,6 +23,7 @@ export const TIPS = {
   v_report: ['Verified report', 'A written report where every sentence cites evidence IDs that a validator checks.', 'Stops unsupported or invented claims from reaching the final report.'],
   download_json: ['Download JSON Report', 'Exports the complete machine-readable report object including citations, verification stats, and hashes.', 'Use for SIEM integration, pipeline ingest, or archival.'],
   download_md: ['Download Markdown Report', 'Exports a formatted human-readable forensic threat briefing in GitHub-flavored Markdown.', 'Ready to share with leadership, auditors, or incident response teams.'],
+  download_pdf: ['Download PDF Report', 'Exports the same verified incident data as a paginated PDF: summary, stages, hosts, evidence citations and integrity hashes.', 'Use for sign-off, case files, or sharing outside the dashboard.'],
   courtroom: ['Courtroom (planned)', 'Will check whether the evidence would stand up: integrity, custody and reproducibility.', 'Makes findings defensible in an audit or legal setting.'],
   containment: ['Containment (planned)', 'Will suggest which machines and ports to block first.', 'Moves from understanding the attack to stopping it.'],
   privacy: ['Privacy proof (planned)', 'Will show that addresses were pseudonymized and no raw traffic left the system.', 'Shows the investigation respects privacy rules.'],
